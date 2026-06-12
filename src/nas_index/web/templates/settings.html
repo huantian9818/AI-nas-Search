@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}设置 - QNAP 文件索引{% endblock %}
+{% block content %}
+<h1>NAS 设置</h1>
+<p class="warning">
+  密码将以明文保存在本机数据库中，请仅在可信设备上运行。
+</p>
+<form method="post" action="/settings">
+  <label>
+    主机
+    <input name="host"
+           required
+           value="{{ config.base_url if config else '' }}">
+  </label>
+  <label>
+    端口
+    <input name="port"
+           type="number"
+           required
+           value="{{ config.port if config else 8080 }}">
+  </label>
+  <label>
+    <input name="use_https"
+           type="checkbox"
+           value="true"
+           {% if config and config.use_https %}checked{% endif %}>
+    使用 HTTPS
+  </label>
+  <label>
+    用户名
+    <input name="username"
+           required
+           value="{{ config.username if config else '' }}">
+  </label>
+  <label>
+    密码
+    <input name="password"
+           type="password"
+           value=""
+           autocomplete="new-password">
+  </label>
+  {% if config %}
+    <small>密码已保存；留空表示保持不变。</small>
+  {% endif %}
+  <div>
+    <button type="submit">保存设置</button>
+    <button type="button"
+            hx-post="/settings/test"
+            hx-target="#connection-result">
+      测试连接
+    </button>
+  </div>
+</form>
+<div id="connection-result"></div>
+{% endblock %}

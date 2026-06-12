@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}概览 - QNAP 文件索引{% endblock %}
+{% block content %}
+<h1>概览</h1>
+<section class="cards">
+  <article>
+    <strong>{{ file_count }}</strong>
+    <span>文件</span>
+  </article>
+  <article>
+    <strong>{{ directory_count }}</strong>
+    <span>文件夹</span>
+  </article>
+</section>
+<p>
+  最后成功扫描：
+  {{ last_successful_scan.finished_at if last_successful_scan else "尚无" }}
+</p>
+<form method="post" action="/scans">
+  <button type="submit">开始扫描</button>
+</form>
+<div id="scan-status"
+     hx-get="/scans/status"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+  {% if scan %}{{ scan.status }}{% else %}尚未扫描{% endif %}
+</div>
+{% endblock %}

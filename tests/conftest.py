@@ -1,10 +1,14 @@
 from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from nas_index.config import AppSettings
 from nas_index.db import create_database_engine, init_database
+from nas_index.repositories.entries import EntryRepository
+from nas_index.types import IndexedItem
 from nas_index.web.app import create_app
 
 
@@ -28,3 +32,65 @@ def database(tmp_path: Path):
     init_database(engine)
     yield engine
     engine.dispose()
+
+
+def seed_entries(engine) -> None:
+    with Session(engine) as session:
+        EntryRepository(session).upsert_batch(
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                ),
+                IndexedItem(
+                    "年度项目计划.docx",
+                    "/Public/年度项目计划.docx",
+                    "/Public",
+                    "file",
+                    128,
+                    datetime(
+                        2026,
+                        1,
+                        1,
+                        tzinfo=UTC,
+                    ),
+                ),
+                IndexedItem(
+                    "资料",
+                    "/Public/资料",
+                    "/Public",
+                    "directory",
+                    None,
+                    None,
+                ),
+                IndexedItem(
+                    "nested-only.txt",
+                    "/Public/资料/nested-only.txt",
+                    "/Public/资料",
+                    "file",
+                    8,
+                    datetime(
+                        2026,
+                        1,
+                        1,
+                        tzinfo=UTC,
+                    ),
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+
+
+@pytest.fixture
+def seeded_entries(database):
+    seed_entries(database)
+
+
+@pytest.fixture
+def web_seeded_entries(client):
+    seed_entries(client.app.state.engine)
