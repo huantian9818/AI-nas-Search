@@ -3,12 +3,17 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from nas_index.config import AppSettings
-from nas_index.db import create_database_engine, create_session_factory
+from nas_index.db import (
+    create_database_engine,
+    create_session_factory,
+    init_database,
+)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
     settings = settings or AppSettings()
     engine = create_database_engine(settings.database_url)
+    init_database(engine)
     session_factory = create_session_factory(engine)
 
     @asynccontextmanager
