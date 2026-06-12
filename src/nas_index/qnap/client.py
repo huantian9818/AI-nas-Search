@@ -1,4 +1,8 @@
+import asyncio
 import base64
+from datetime import UTC, datetime
+from pathlib import PurePosixPath
+from typing import AsyncIterator
 from xml.etree import ElementTree
 
 import httpx
@@ -6,10 +10,38 @@ import httpx
 from nas_index.qnap.errors import (
     QnapAuthenticationError,
     QnapConnectionError,
+    QnapPermissionError,
     QnapProtocolError,
     QnapTwoStepRequired,
 )
-from nas_index.types import NasConnection
+from nas_index.types import IndexedItem, NasConnection
+
+
+def canonical_path(value: str) -> str:
+    parts = [
+        part
+        for part in PurePosixPath(
+            value.replace("\\", "/")
+        ).parts
+        if part != "/"
+    ]
+    return "/" + "/".join(parts)
+
+
+def join_path(parent: str, name: str) -> str:
+    return canonical_path(f"{parent}/{name}")
+
+
+def _raise_for_qnap_status(payload: object) -> None:
+    if not isinstance(payload, dict):
+        return
+    status = payload.get("status")
+    if status == 4:
+        raise QnapPermissionError()
+    if status == 17:
+        raise QnapAuthenticationError()
+    if status not in {None, 0, 1}:
+        raise QnapProtocolError()
 
 
 class QnapClient:
@@ -31,19 +63,15 @@ class QnapClient:
         encoded = base64.b64encode(
             self.connection.password.encode("utf-8")
         ).decode("ascii")
-        try:
-            response = await self.http.get(
-                f"{self.connection.endpoint}/cgi-bin/authLogin.cgi",
-                params={
-                    "user": self.connection.username,
-                    "pwd": encoded,
-                    "remme": 0,
-                    "serviceKey": 1,
-                },
-            )
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise QnapConnectionError() from exc
+        response = await self._request_with_retry(
+            f"{self.connection.endpoint}/cgi-bin/authLogin.cgi",
+            {
+                "user": self.connection.username,
+                "pwd": encoded,
+                "remme": 0,
+                "serviceKey": 1,
+            },
+        )
 
         try:
             root = ElementTree.fromstring(response.text)
@@ -60,6 +88,141 @@ class QnapClient:
             raise QnapProtocolError()
         self.sid = sid
         return sid
+
+    async def list_shares(self) -> list[IndexedItem]:
+        payload = await self._file_station_request(
+            {
+                "func": "get_tree",
+                "node": "share_root",
+                "is_iso": 0,
+                "hidden_file": 0,
+            }
+        )
+        if not isinstance(payload, list):
+            raise QnapProtocolError()
+        return [
+            IndexedItem(
+                name=str(row["text"]),
+                full_path=canonical_path(str(row["id"])),
+                parent_path="/",
+                entry_type="directory",
+                size_bytes=None,
+                modified_at=None,
+            )
+            for row in payload
+            if row.get("iconCls") == "folder"
+            and row.get("cls") in {"r", "w"}
+        ]
+
+    async def iter_children(
+        self,
+        path: str,
+        *,
+        page_size: int,
+    ) -> AsyncIterator[IndexedItem]:
+        start = 0
+        while True:
+            payload = await self._file_station_request(
+                {
+                    "func": "get_list",
+                    "is_iso": 0,
+                    "list_mode": "all",
+                    "path": canonical_path(path),
+                    "dir": "ASC",
+                    "limit": page_size,
+                    "sort": "filename",
+                    "start": start,
+                    "hidden_file": 1,
+                    "v": 1,
+                }
+            )
+            if not isinstance(payload, dict) or not isinstance(
+                payload.get("datas"),
+                list,
+            ):
+                raise QnapProtocolError()
+
+            rows = payload["datas"]
+            for row in rows:
+                is_directory = int(row.get("isfolder", 0)) == 1
+                epoch = int(row.get("epochmt") or 0)
+                yield IndexedItem(
+                    name=str(row["filename"]),
+                    full_path=join_path(
+                        path,
+                        str(row["filename"]),
+                    ),
+                    parent_path=canonical_path(path),
+                    entry_type=(
+                        "directory" if is_directory else "file"
+                    ),
+                    size_bytes=(
+                        None
+                        if is_directory
+                        else int(row.get("filesize") or 0)
+                    ),
+                    modified_at=(
+                        datetime.fromtimestamp(epoch, UTC)
+                        if epoch
+                        else None
+                    ),
+                )
+
+            start += len(rows)
+            if not rows or start >= int(
+                payload.get("total", start)
+            ):
+                break
+
+    async def _file_station_request(
+        self,
+        params: dict[str, object],
+    ) -> object:
+        if not self.sid:
+            raise QnapAuthenticationError()
+        response = await self._request_with_retry(
+            (
+                f"{self.connection.endpoint}"
+                "/cgi-bin/filemanager/utilRequest.cgi"
+            ),
+            {**params, "sid": self.sid},
+        )
+        try:
+            payload = response.json()
+        except ValueError as exc:
+            raise QnapProtocolError() from exc
+        _raise_for_qnap_status(payload)
+        return payload
+
+    async def _request_with_retry(
+        self,
+        url: str,
+        params: dict[str, object],
+    ) -> httpx.Response:
+        delays = (0.0, 0.25, 0.75)[: self.retry_attempts]
+        for attempt, delay in enumerate(delays, start=1):
+            if delay:
+                await asyncio.sleep(delay)
+            try:
+                response = await self.http.get(
+                    url,
+                    params=params,
+                )
+                if response.status_code in {502, 503, 504}:
+                    if attempt == len(delays):
+                        raise QnapConnectionError()
+                    continue
+                response.raise_for_status()
+                return response
+            except (
+                httpx.TimeoutException,
+                httpx.ConnectError,
+            ) as exc:
+                if attempt == len(delays):
+                    raise QnapConnectionError() from exc
+            except httpx.HTTPStatusError as exc:
+                raise QnapConnectionError() from exc
+        raise QnapConnectionError()
 
     async def logout(self) -> None:
         if self.sid:
