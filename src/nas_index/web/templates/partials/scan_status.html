@@ -1,0 +1,27 @@
+{% if scan and scan.status == "running" %}
+<section hx-get="/scans/status"
+         hx-trigger="every 2s"
+         hx-swap="outerHTML">
+  <strong>正在扫描</strong>
+  <span>{{ scan.processed_entries }} 条</span>
+  <code>{{ scan.current_path or "/" }}</code>
+</section>
+{% elif scan %}
+<section>
+  <strong>
+    {{
+      {
+        "succeeded": "扫描完成",
+        "failed": "扫描失败",
+        "interrupted": "扫描中断"
+      }[scan.status]
+    }}
+  </strong>
+  <span>{{ scan.processed_entries }} 条</span>
+  {% if scan.error_summary %}
+    <p>{{ scan.error_summary }}</p>
+  {% endif %}
+</section>
+{% else %}
+<section>尚未扫描</section>
+{% endif %}
