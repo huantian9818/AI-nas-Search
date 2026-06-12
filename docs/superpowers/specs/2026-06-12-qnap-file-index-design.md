@@ -1,0 +1,334 @@
+# QNAP File Index Web Application Design
+
+## 1. Purpose
+
+Build a local web application that connects to one QNAP NAS running QTS
+5.2.9 through the QNAP File Station API, indexes all shared folders visible to
+a dedicated read-only account, stores file and directory metadata in a local
+database, and provides read-only directory browsing and name search.
+
+The expected index size is 100,000 to 1,000,000 files and directories.
+
+## 2. Scope
+
+The first version will:
+
+- Manage one NAS connection.
+- Store the NAS address, port, protocol, username, and password in the local
+  SQLite database.
+- Test the configured NAS connection.
+- Discover every shared folder visible to the configured account.
+- Manually start a full traversal that incrementally updates the local index.
+- Display scan status and progress.
+- Browse the indexed hierarchy without loading the whole tree at once.
+- Search file and directory names and show full paths.
+- Display name, full path, type, size, and modification time.
+
+The first version will not:
+
+- Scan file contents or provide full-text content search.
+- Download, rename, move, upload, or delete NAS files.
+- Manage multiple NAS devices.
+- Schedule automatic scans.
+- Encrypt the stored NAS password.
+- Depend on a mounted SMB directory.
+
+The application must warn users that plaintext credentials are suitable only
+for a trusted local machine. Credentials and authentication tokens must never
+be written to logs.
+
+## 3. Technology
+
+- Python with FastAPI for the HTTP application and API endpoints.
+- Jinja2 server-rendered templates with HTMX for partial page updates.
+- SQLite as the local database.
+- SQLite FTS5 for file and directory name search.
+- SQLAlchemy for database access and schema management.
+- HTTPX for QNAP API requests.
+- Pytest for automated tests.
+
+The application runs as one local FastAPI process. A scan executes as an
+in-process background job, and only one scan may run at a time.
+
+This architecture minimizes local deployment requirements while remaining
+appropriate for an index of up to approximately one million entries.
+
+## 4. Components
+
+### 4.1 QNAP API Client
+
+The QNAP client owns all communication with QTS:
+
+- Authenticate with the dedicated read-only account.
+- Retain the session identifier only for the active operation.
+- Discover all shared folders accessible to the account.
+- List directory children with API pagination.
+- Normalize QNAP response fields into application metadata.
+- Apply request timeouts and bounded retries for transient failures.
+- Detect authentication expiration and report it as a typed error.
+- Log out at the end of connection tests and scans.
+
+QNAP API endpoints and response variants must be isolated behind this client so
+that later QTS compatibility changes do not affect indexing or web code.
+
+### 4.2 Index Service
+
+The index service coordinates scans:
+
+- Reject a new scan while another scan is active.
+- Create and update a persistent scan record.
+- Traverse all accessible shares and their descendants.
+- Write records in batches inside short database transactions.
+- Update progress after each processed batch.
+- Mark a scan successful only after every accessible share is traversed.
+- Remove stale index records only after a successful complete traversal.
+- Preserve old records if any directory fails or the process is interrupted.
+
+### 4.3 Repository and Search
+
+The repository provides focused operations for:
+
+- Upserting batches of indexed entries.
+- Listing direct children of a directory with pagination.
+- Loading directory ancestors for result navigation.
+- Counting files and directories.
+- Searching names through FTS5 with pagination.
+- Removing stale entries after a successful scan.
+- Reading and updating scan state and NAS configuration.
+
+### 4.4 Web Application
+
+The web layer provides:
+
+- Dashboard and summary statistics.
+- Lazy directory browsing.
+- Paginated search results.
+- NAS settings and connection testing.
+- Manual scan initiation and polling of scan progress.
+
+The web layer does not call QNAP APIs directly; it uses the client and index
+service interfaces.
+
+## 5. Data Model
+
+### 5.1 `nas_config`
+
+One row stores:
+
+- `id`
+- `base_url`
+- `port`
+- `use_https`
+- `username`
+- `password`
+- `updated_at`
+
+The password is intentionally stored as plaintext by user decision. It must be
+masked in the settings page after it has been saved and excluded from all
+application logging and serialized responses.
+
+### 5.2 `entries`
+
+Each indexed file or directory stores:
+
+- `id`
+- `name`
+- `full_path`
+- `parent_path`
+- `entry_type` (`file` or `directory`)
+- `size_bytes` (zero or null for directories)
+- `modified_at`
+- `scan_generation`
+- `created_at`
+- `updated_at`
+
+`full_path` has a unique index. Additional indexes cover `parent_path`,
+`entry_type`, and `scan_generation`.
+
+Paths are stored in one canonical form generated by the QNAP client. The
+canonical form uses `/` separators, includes the share name as the first path
+component, has a leading `/`, and has no trailing slash except for the root.
+
+### 5.3 `entry_search`
+
+An FTS5 external-content virtual table indexes entry names. SQLite triggers
+keep inserts, updates, and deletes synchronized with `entries`.
+
+Search is limited to names. Full paths are returned from `entries` but are not
+searched independently in the first version.
+
+### 5.4 `scan_runs`
+
+Each scan stores:
+
+- `id`
+- `generation`
+- `status` (`running`, `succeeded`, `failed`, or `interrupted`)
+- `started_at`
+- `finished_at`
+- `processed_entries`
+- `current_path`
+- `error_summary`
+
+Detailed directory failures are stored in a related `scan_errors` table. Each
+record includes the scan ID, failed path, sanitized reason, and creation time.
+
+## 6. Scan Algorithm
+
+1. Read the single NAS configuration and ensure no scan is active.
+2. Authenticate with QTS and retrieve the accessible shared folders.
+3. Create a new monotonically increasing scan generation.
+4. Insert each shared folder as a top-level directory entry.
+5. Traverse directories iteratively to avoid recursion depth limits.
+6. Fetch directory children page by page.
+7. Normalize each child and batch-upsert it with the current generation.
+8. Queue child directories for traversal.
+9. Persist the processed count and current path periodically.
+10. If every share completes, delete entries whose generation is older than
+    the current generation and mark the scan successful.
+11. If any directory fails, mark the scan failed and do not delete entries from
+    older generations.
+12. Log out and release the scan lock in all cases.
+
+This is an incremental database update but a complete metadata traversal. It
+upserts observed rows rather than rebuilding the index and still detects
+deletions without relying on an undocumented or unreliable global change
+journal. Every observed entry receives the current generation; metadata
+changes are applied in the same batch upsert.
+
+## 7. Web Experience
+
+### 7.1 Dashboard
+
+Display:
+
+- Total indexed files.
+- Total indexed directories.
+- Last successful scan time.
+- Latest scan status.
+- A manual scan button.
+- Live scan progress while a scan is running.
+
+### 7.2 Directory Browser
+
+The left side presents a lazy-loaded directory tree. Expanding a directory
+requests only its direct child directories.
+
+The content panel lists direct files and directories for the selected path,
+with server-side pagination. It shows name, type, size, and modification time.
+Directories appear before files, then entries are sorted by name.
+
+### 7.3 Search
+
+Search covers file and directory names. Results are paginated and display:
+
+- Name.
+- Type.
+- Size.
+- Modification time.
+- Full path.
+
+Results sort first by FTS relevance, then directories before files, then name.
+Selecting a result opens its parent directory and identifies the selected
+entry.
+
+The search layer must escape or safely construct FTS5 queries from user input.
+Empty or whitespace-only queries return no results rather than the entire
+index.
+
+### 7.4 Settings
+
+The settings page edits:
+
+- NAS host or address.
+- Port.
+- HTTP or HTTPS.
+- Username.
+- Password.
+
+It provides a connection test that authenticates, confirms that shared folders
+can be listed, reports a user-readable outcome, and logs out. A blank password
+field while editing preserves the existing saved password.
+
+The page prominently notes that the password is stored unencrypted in the
+local database.
+
+## 8. Concurrency and Recovery
+
+Only one scan is allowed at a time. The application uses both an in-process
+lock and persistent scan state to prevent accidental duplicate starts.
+
+On startup, any `running` scan without an active in-process worker is changed
+to `interrupted`. No stale-entry cleanup is performed for interrupted scans.
+The user can then start a new scan.
+
+SQLite must use WAL mode and a busy timeout. Scan batches use short
+transactions so browsing and search remain responsive during indexing.
+
+## 9. Error Handling
+
+- Connection, TLS, timeout, authentication, permission, malformed-response,
+  and API errors map to distinct internal exceptions.
+- User-facing messages are concise and must not expose passwords, session IDs,
+  raw credentials, or stack traces.
+- Transient network failures receive a small bounded number of retries with
+  backoff.
+- Authentication and permission errors are not blindly retried.
+- A failure in any directory makes the whole scan incomplete and prevents
+  stale-record deletion.
+- Unexpected worker failures are recorded against the scan and release the
+  active-scan lock.
+- Database batch failures roll back only the current batch and fail the scan.
+
+## 10. Testing
+
+Automated tests use a simulated QNAP API and cover:
+
+- Authentication, logout, shared-folder discovery, response normalization,
+  pagination, timeout, retry, and expired-session handling.
+- Canonical path generation and unusual file names.
+- Batch insert, unchanged entry refresh, metadata update, and FTS5
+  synchronization.
+- Successful stale-record cleanup.
+- Cleanup suppression after partial failure or interruption.
+- Single-scan enforcement and startup recovery.
+- Lazy directory listing, pagination, sorting, and ancestor lookup.
+- Search matching, FTS query safety, relevance ordering, and empty queries.
+- Settings validation, password preservation, and credential redaction.
+- End-to-end scan behavior against the simulated API.
+
+Manual acceptance against the real QTS 5.2.9 NAS verifies:
+
+1. Saving settings and testing the connection.
+2. Discovering all shares visible to the read-only account.
+3. Completing an initial scan.
+4. Browsing nested directories and large folders.
+5. Searching representative file and directory names.
+6. Reflecting additions, metadata changes, and deletions after another scan.
+7. Preserving prior index data when access to one directory is deliberately
+   made unavailable during a scan.
+
+## 11. Operational Constraints
+
+- Initial target is local development and local use.
+- No external network exposure is assumed.
+- The application must document how to start it and where the SQLite database
+  is stored.
+- Database and log paths must be configurable.
+- API and scan logs must use sanitized values.
+- No automatic scan schedule is included.
+
+## 12. Acceptance Criteria
+
+The feature is complete when:
+
+- A user can configure and test one QTS 5.2.9 NAS connection.
+- A manual scan indexes every accessible shared folder through the QNAP API.
+- The application remains responsive while indexing up to one million entries.
+- A successful repeat scan updates changed metadata and removes deleted items.
+- A failed or interrupted scan never removes old indexed items.
+- Users can lazily browse the complete indexed hierarchy.
+- Users can search file and directory names and see full paths.
+- The UI exposes no write operation against NAS files.
+- Automated tests cover the core API, indexing, recovery, browse, and search
+  behaviors.
