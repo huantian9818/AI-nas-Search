@@ -12,6 +12,8 @@ from nas_index.db import (
     init_database,
 )
 from nas_index.web.routes import dashboard
+from nas_index.web.routes import browse as browse_routes
+from nas_index.web.routes import search as search_routes
 from nas_index.web.routes import settings as settings_routes
 
 
@@ -44,6 +46,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     app.include_router(dashboard.router)
     app.include_router(settings_routes.router)
+    app.include_router(browse_routes.router)
+    app.include_router(search_routes.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

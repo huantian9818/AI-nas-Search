@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}搜索 - QNAP 文件索引{% endblock %}
+{% block content %}
+<h1>搜索</h1>
+<form method="get" action="/search">
+  <input name="q"
+         value="{{ query }}"
+         placeholder="文件名或文件夹名">
+  <button type="submit">搜索</button>
+</form>
+{% if query %}
+  <p>找到 {{ results.total }} 条结果</p>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>名称</th>
+          <th>类型</th>
+          <th>大小</th>
+          <th>修改时间</th>
+          <th>完整路径</th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for item in results.items %}
+        <tr>
+          <td>
+            <a href="/browse?path={{ item.parent_path | urlencode }}&amp;selected={{ item.id }}">
+              {{ item.name }}
+            </a>
+          </td>
+          <td>
+            {{ "文件夹" if item.entry_type == "directory" else "文件" }}
+          </td>
+          <td>
+            {{ item.size_bytes if item.size_bytes is not none else "-" }}
+          </td>
+          <td>{{ item.modified_at or "-" }}</td>
+          <td><code>{{ item.full_path }}</code></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <nav class="pagination">
+    {% if results.page > 1 %}
+      <a href="/search?q={{ query | urlencode }}&amp;page={{ results.page - 1 }}">
+        上一页
+      </a>
+    {% endif %}
+    {% if results.page * results.page_size < results.total %}
+      <a href="/search?q={{ query | urlencode }}&amp;page={{ results.page + 1 }}">
+        下一页
+      </a>
+    {% endif %}
+  </nav>
+{% endif %}
+{% endblock %}
