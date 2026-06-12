@@ -1,0 +1,163 @@
+:root {
+  color-scheme: light;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #172033;
+  background: #f4f6fa;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 2rem;
+  background: #16213b;
+  box-shadow: 0 1px 8px rgb(15 23 42 / 20%);
+}
+
+header a {
+  color: white;
+  text-decoration: none;
+}
+
+header > a {
+  font-weight: 700;
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.cards article,
+section,
+aside {
+  background: white;
+  border: 1px solid #dce2ec;
+  border-radius: 0.6rem;
+  padding: 1rem;
+}
+
+.cards strong {
+  display: block;
+  font-size: 2rem;
+}
+
+.browser-layout {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.tree-children {
+  margin-left: 0.75rem;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  padding: 0.7rem;
+  border-bottom: 1px solid #e4e8ef;
+  text-align: left;
+}
+
+tr.selected {
+  background: #fff3bf;
+}
+
+label {
+  display: block;
+  margin: 0.8rem 0;
+}
+
+input {
+  display: block;
+  width: 100%;
+  max-width: 32rem;
+  margin-top: 0.25rem;
+  padding: 0.55rem;
+  border: 1px solid #bdc7d8;
+  border-radius: 0.35rem;
+}
+
+button {
+  padding: 0.55rem 0.9rem;
+  border: 1px solid #3157a4;
+  border-radius: 0.35rem;
+  color: white;
+  background: #3157a4;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #264783;
+}
+
+.warning {
+  padding: 0.8rem;
+  border-left: 0.3rem solid #d97706;
+  background: #fff7ed;
+}
+
+.success {
+  color: #166534;
+}
+
+.error {
+  color: #b91c1c;
+}
+
+.pagination {
+  margin-top: 1rem;
+}
+
+code {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 800px) {
+  header {
+    align-items: flex-start;
+    padding: 1rem;
+  }
+
+  main {
+    padding: 1rem;
+  }
+
+  .browser-layout,
+  .cards {
+    grid-template-columns: 1fr;
+  }
+}

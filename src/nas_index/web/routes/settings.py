@@ -55,6 +55,7 @@ def settings_page(
 
 @router.post("/settings")
 def save_settings(
+    request: Request,
     host: str = Form(...),
     port: int = Form(..., ge=1, le=65535),
     use_https: bool = Form(False),
@@ -62,18 +63,30 @@ def save_settings(
     password: str = Form(""),
     session: Session = Depends(get_session),
 ):
-    ConfigRepository(session).save(
-        NasConnection(
-            normalize_base_url(
-                host,
+    repository = ConfigRepository(session)
+    try:
+        repository.save(
+            NasConnection(
+                normalize_base_url(
+                    host,
+                    use_https,
+                ),
+                port,
                 use_https,
-            ),
-            port,
-            use_https,
-            username,
-            password,
+                username,
+                password,
+            )
         )
-    )
+    except ValueError as exc:
+        return request.app.state.templates.TemplateResponse(
+            request=request,
+            name="settings.html",
+            context={
+                "config": repository.get(),
+                "error": str(exc),
+            },
+            status_code=422,
+        )
     session.commit()
     return RedirectResponse(
         "/settings",

@@ -5,6 +5,9 @@
 <p class="warning">
   密码将以明文保存在本机数据库中，请仅在可信设备上运行。
 </p>
+{% if error %}
+  <p class="error">{{ error }}</p>
+{% endif %}
 <form method="post" action="/settings">
   <label>
     主机
@@ -37,6 +40,7 @@
     <input name="password"
            type="password"
            value=""
+           {% if not config %}required{% endif %}
            autocomplete="new-password">
   </label>
   {% if config %}

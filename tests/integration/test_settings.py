@@ -53,3 +53,18 @@ def test_connection_test_returns_sanitized_error(
     assert response.status_code == 200
     assert "连接测试失败" in response.text
     assert "secret-token" not in response.text
+
+
+def test_first_save_requires_password(client):
+    response = client.post(
+        "/settings",
+        data={
+            "host": "nas.local",
+            "port": "8080",
+            "username": "indexer",
+            "password": "",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "首次保存时必须输入密码" in response.text

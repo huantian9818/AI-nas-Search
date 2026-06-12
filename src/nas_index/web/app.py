@@ -12,8 +12,10 @@ from nas_index.db import (
     create_session_factory,
     init_database,
 )
+from nas_index.logging import configure_logging
 from nas_index.qnap.client import QnapClient
 from nas_index.repositories.config import ConfigRepository
+from nas_index.repositories.scans import ScanRepository
 from nas_index.services.scan_manager import ScanManager
 from nas_index.services.scanner import Scanner
 from nas_index.web.routes import dashboard
@@ -28,9 +30,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     engine = create_database_engine(settings.database_url)
     init_database(engine)
     session_factory = create_session_factory(engine)
+    configure_logging(settings.log_dir)
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        with session_factory() as session:
+            ScanRepository(
+                session
+            ).interrupt_running()
+            session.commit()
         yield
         engine.dispose()
 

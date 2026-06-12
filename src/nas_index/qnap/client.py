@@ -231,13 +231,20 @@ class QnapClient:
                     f"{self.connection.endpoint}/cgi-bin/authLogout.cgi",
                     params={"sid": self.sid},
                 )
+            except httpx.HTTPError:
+                pass
             finally:
                 self.sid = None
         if self._owns_http:
             await self.http.aclose()
 
     async def __aenter__(self) -> "QnapClient":
-        await self.login()
+        try:
+            await self.login()
+        except BaseException:
+            if self._owns_http:
+                await self.http.aclose()
+            raise
         return self
 
     async def __aexit__(self, *_exc_info) -> None:

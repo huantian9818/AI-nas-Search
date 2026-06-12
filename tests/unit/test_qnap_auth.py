@@ -84,3 +84,59 @@ async def test_login_maps_invalid_credentials():
             match="用户名或密码",
         ):
             await QnapClient(CONNECTION, http=http).login()
+
+
+@pytest.mark.asyncio
+async def test_owned_http_client_closes_when_context_login_fails():
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(
+            200,
+            text=(
+                "<QDocRoot>"
+                "<authPassed>0</authPassed>"
+                "</QDocRoot>"
+            ),
+        )
+    )
+    client = QnapClient(CONNECTION)
+    await client.http.aclose()
+    client.http = httpx.AsyncClient(
+        transport=transport
+    )
+
+    with pytest.raises(QnapAuthenticationError):
+        await client.__aenter__()
+
+    assert client.http.is_closed
+
+
+@pytest.mark.asyncio
+async def test_logout_connection_failure_does_not_mask_operation():
+    def handler(
+        request: httpx.Request,
+    ) -> httpx.Response:
+        if request.url.path.endswith(
+            "authLogin.cgi"
+        ):
+            return httpx.Response(
+                200,
+                text=(
+                    "<QDocRoot>"
+                    "<authPassed>1</authPassed>"
+                    "<authSid>abc123</authSid>"
+                    "</QDocRoot>"
+                ),
+            )
+        raise httpx.ConnectError(
+            "offline during logout",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        async with QnapClient(
+            CONNECTION,
+            http=http,
+        ):
+            pass
