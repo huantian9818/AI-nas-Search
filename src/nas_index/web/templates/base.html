@@ -26,6 +26,10 @@
            href="/search">
           搜索
         </a>
+        <a class="{% if request.url.path.startswith('/access') %}is-active{% endif %}"
+           href="/access">
+          访问
+        </a>
         <a class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}"
            href="/settings">
           设置

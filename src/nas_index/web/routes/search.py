@@ -7,15 +7,17 @@ from pathlib import PurePosixPath
 from typing import Callable
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from markupsafe import Markup, escape
 from sqlalchemy.orm import Session
 
 from nas_index.models import Entry
 from nas_index.repositories.entries import EntryRepository
+from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
 from nas_index.web.routes.browse import _normalize_path
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.access import current_access
 
 router = APIRouter(prefix="/search")
 
@@ -210,6 +212,7 @@ def _group_results(
 def _build_search_tree(
     repository: EntryRepository,
     *,
+    access: UserAccess,
     parent_path: str,
     current_path: str,
     expanded_paths: set[str],
@@ -220,7 +223,11 @@ def _build_search_tree(
     selected_id: int | None,
 ) -> list[SearchTreeNode]:
     nodes: list[SearchTreeNode] = []
-    for entry in repository.list_child_directories(parent_path):
+    for entry in repository.list_child_directories(
+        access.nas_id,
+        parent_path,
+        allowed_share_paths=access.share_paths,
+    ):
         if entry.full_path not in visible_directory_paths:
             continue
         should_expand = entry.full_path in expanded_paths
@@ -229,6 +236,7 @@ def _build_search_tree(
             children.extend(
                 _build_search_tree(
                     repository,
+                    access=access,
                     parent_path=entry.full_path,
                     current_path=current_path,
                     expanded_paths=expanded_paths,
@@ -287,6 +295,7 @@ def _tree_context(
     repository: EntryRepository,
     items: list[Entry],
     selected_result: Entry | None,
+    access: UserAccess,
 ) -> tuple[list[SearchTreeNode], str]:
     if selected_result is None:
         return [], "/"
@@ -326,6 +335,7 @@ def _tree_context(
 
     tree_nodes = _build_search_tree(
         repository,
+        access=access,
         parent_path="/",
         current_path=current_path,
         expanded_paths=expanded_paths,
@@ -353,10 +363,19 @@ def search(
     selected: int | None = Query(None),
     session: Session = Depends(get_session),
 ):
+    access = current_access(request)
+    if access is None:
+        return RedirectResponse(
+            "/access",
+            status_code=303,
+        )
+
     query = q.strip()
     repository = EntryRepository(session)
     results = repository.search(
         query,
+        nas_id=access.nas_id,
+        allowed_share_paths=access.share_paths,
         page=page,
         page_size=50,
     )
@@ -406,6 +425,7 @@ def search(
         repository,
         results.items,
         selected_result,
+        access,
     )
     return request.app.state.templates.TemplateResponse(
         request=request,

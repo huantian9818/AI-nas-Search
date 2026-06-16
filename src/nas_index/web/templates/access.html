@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}访问 - QNAP 文件索引{% endblock %}
+{% block content %}
+<div class="page">
+  <section class="section-block">
+    <h1>访问</h1>
+    <p>使用你的 NAS 账号进入可访问的共享目录。</p>
+  </section>
+
+  {% if access %}
+    <p class="plain-note">
+      当前用户：{{ access.username }}，可访问 {{ access.share_paths | length }} 个共享目录。
+    </p>
+  {% endif %}
+
+  {% if error %}
+    <p>{{ error }}</p>
+  {% endif %}
+
+  <section class="section-block">
+    {% if servers %}
+      <form method="post" action="/access" class="stack-form">
+        <label>
+          NAS
+          <select name="nas_id" required>
+            {% for server in servers %}
+              <option value="{{ server.id }}">
+                {{ server.name }} ({{ server.base_url }}:{{ server.port }})
+              </option>
+            {% endfor %}
+          </select>
+        </label>
+        <label>
+          用户名
+          <input name="username" required autocomplete="username">
+        </label>
+        <label>
+          密码
+          <input name="password"
+                 type="password"
+                 required
+                 autocomplete="current-password">
+        </label>
+        <div class="inline-actions">
+          <button type="submit">进入目录</button>
+        </div>
+      </form>
+    {% else %}
+      <p>请先在设置中保存 NAS。</p>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

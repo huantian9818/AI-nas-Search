@@ -24,7 +24,8 @@ a {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -98,7 +99,8 @@ label {
   gap: 4px;
 }
 
-input:not([type="checkbox"]) {
+input:not([type="checkbox"]),
+select {
   width: 100%;
   max-width: 480px;
   padding: 4px 0;

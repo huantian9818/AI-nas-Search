@@ -9,6 +9,7 @@ from nas_index.config import AppSettings
 from nas_index.db import create_database_engine, init_database
 from nas_index.repositories.entries import EntryRepository
 from nas_index.types import IndexedItem
+from nas_index.types import UserAccess
 from nas_index.web.app import create_app
 
 
@@ -92,5 +93,21 @@ def seeded_entries(database):
 
 
 @pytest.fixture
-def web_seeded_entries(client):
+def web_public_access(client):
+    token = client.app.state.access_store.create(
+        nas_id=1,
+        username="alice",
+        share_paths=("/Public",),
+    )
+    client.cookies.set("nas_access", token)
+    return UserAccess(
+        nas_id=1,
+        username="alice",
+        share_paths=("/Public",),
+        expires_at=client.app.state.access_store.get(token).expires_at,
+    )
+
+
+@pytest.fixture
+def web_seeded_entries(client, web_public_access):
     seed_entries(client.app.state.engine)

@@ -2,12 +2,14 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from nas_index.models import Entry
 from nas_index.repositories.entries import EntryRepository
+from nas_index.types import UserAccess
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.access import current_access
 
 router = APIRouter(prefix="/browse")
 
@@ -50,12 +52,17 @@ def _expanded_paths(current_path: str) -> set[str]:
 def _build_tree(
     repository: EntryRepository,
     *,
+    access: UserAccess,
     parent_path: str,
     current_path: str,
     expanded_paths: set[str],
 ) -> list[DirectoryTreeNode]:
     nodes: list[DirectoryTreeNode] = []
-    for entry in repository.list_child_directories(parent_path):
+    for entry in repository.list_child_directories(
+        access.nas_id,
+        parent_path,
+        allowed_share_paths=access.share_paths,
+    ):
         is_current = entry.full_path == current_path
         should_expand = entry.full_path in expanded_paths
         nodes.append(
@@ -64,6 +71,7 @@ def _build_tree(
                 children=(
                     _build_tree(
                         repository,
+                        access=access,
                         parent_path=entry.full_path,
                         current_path=current_path,
                         expanded_paths=expanded_paths,
@@ -92,6 +100,13 @@ def browse(
     page: int = Query(1, ge=1),
     session: Session = Depends(get_session),
 ):
+    access = current_access(request)
+    if access is None:
+        return RedirectResponse(
+            "/access",
+            status_code=303,
+        )
+
     path = _normalize_path(path)
     repository = EntryRepository(session)
     if selected is not None:
@@ -103,7 +118,9 @@ def browse(
             or page
         )
     listing = repository.list_children(
+        access.nas_id,
         path,
+        allowed_share_paths=access.share_paths,
         page=page,
         page_size=100,
     )
@@ -116,6 +133,7 @@ def browse(
             "listing": listing,
             "tree_nodes": _build_tree(
                 repository,
+                access=access,
                 parent_path="/",
                 current_path=path,
                 expanded_paths=_expanded_paths(path),

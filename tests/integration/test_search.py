@@ -78,6 +78,12 @@ def search_layout_entries(client, web_seeded_entries):
             generation=1,
         )
         session.commit()
+    token = client.app.state.access_store.create(
+        nas_id=1,
+        username="alice",
+        share_paths=("/Archive", "/Public"),
+    )
+    client.cookies.set("nas_access", token)
 
 
 def _plain_text(html: str) -> str:
