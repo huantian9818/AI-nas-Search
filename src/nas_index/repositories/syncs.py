@@ -189,6 +189,21 @@ class SyncRepository:
             .limit(1)
         )
 
+    def latest(self) -> SyncRun | None:
+        return self.session.scalar(
+            select(SyncRun)
+            .order_by(SyncRun.id.desc())
+            .limit(1)
+        )
+
+    def last_successful(self) -> SyncRun | None:
+        return self.session.scalar(
+            select(SyncRun)
+            .where(SyncRun.status == "succeeded")
+            .order_by(SyncRun.finished_at.desc())
+            .limit(1)
+        )
+
     def interrupt_running(self) -> int:
         result = self.session.execute(
             update(SyncRun)

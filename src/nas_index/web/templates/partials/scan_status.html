@@ -1,6 +1,6 @@
 {% if scan and scan.status == "running" %}
 <section class="section-block"
-         hx-get="/scans/status"
+         hx-get="/scans/status?nas_id={{ scan.nas_id }}"
          hx-trigger="every 2s"
          hx-swap="outerHTML">
   <p>状态：正在扫描</p>

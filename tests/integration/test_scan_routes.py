@@ -59,5 +59,8 @@ def test_scan_status_partial_polls_while_running(
     )
 
     assert response.status_code == 200
-    assert 'hx-get="/scans/status"' in response.text
+    assert (
+        f'hx-get="/scans/status?nas_id={running_scan}"'
+        in response.text
+    )
     assert "正在扫描" in response.text
