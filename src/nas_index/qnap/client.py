@@ -180,16 +180,16 @@ class QnapClient:
             ) not in {"r", "w"}:
                 continue
             try:
+                full_path = canonical_path(str(row["id"]))
                 shares.append(
                     IndexedItem(
                         name=str(row["text"]),
-                        full_path=canonical_path(
-                            str(row["id"])
-                        ),
+                        full_path=full_path,
                         parent_path="/",
                         entry_type="directory",
                         size_bytes=None,
                         modified_at=None,
+                        share_path=full_path,
                     )
                 )
             except (
@@ -212,13 +212,24 @@ class QnapClient:
         page_size: int,
     ) -> AsyncIterator[IndexedItem]:
         start = 0
+        current_path = canonical_path(path)
+        path_parts = [
+            part
+            for part in PurePosixPath(current_path).parts
+            if part != "/"
+        ]
+        share_path = (
+            f"/{path_parts[0]}"
+            if path_parts
+            else "/"
+        )
         while True:
             payload = await self._file_station_request(
                 {
                     "func": "get_list",
                     "is_iso": 0,
                     "list_mode": "all",
-                    "path": canonical_path(path),
+                    "path": current_path,
                     "dir": "ASC",
                     "limit": page_size,
                     "sort": "filename",
@@ -280,6 +291,7 @@ class QnapClient:
                         if epoch
                         else None
                     ),
+                    share_path=share_path,
                 )
 
             start += len(rows)

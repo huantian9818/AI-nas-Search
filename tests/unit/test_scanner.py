@@ -5,11 +5,12 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from nas_index.models import Entry, ScanRun
+from nas_index.models import Entry, SyncRun
 from nas_index.qnap.errors import (
     QnapPermissionError,
     QnapProtocolError,
 )
+from nas_index.repositories.nas import NasRepository
 from nas_index.services.scanner import Scanner
 from nas_index.types import IndexedItem
 
@@ -34,6 +35,22 @@ def file(name, path, parent):
         4,
         datetime.now(UTC),
     )
+
+
+def create_nas(session: Session) -> int:
+    nas_id = NasRepository(session).create_server(
+        name="Test NAS",
+        base_url="http://nas.local",
+        port=8080,
+        use_https=False,
+        enabled=True,
+        sync_interval_minutes=30,
+        full_resync_interval_hours=24,
+        username="indexer",
+        password="secret",
+    ).id
+    session.commit()
+    return nas_id
 
 
 class FakeQnap:
@@ -77,8 +94,10 @@ class FakeQnap:
 async def test_successful_scan_indexes_tree_and_deletes_stale(database):
     now = datetime.now(UTC)
     with Session(database) as session:
+        nas_id = create_nas(session)
         session.add(
             Entry(
+                nas_id=nas_id,
                 name="stale.txt",
                 full_path="/Public/stale.txt",
                 parent_path="/Public",
@@ -97,6 +116,7 @@ async def test_successful_scan_indexes_tree_and_deletes_stale(database):
         lambda: FakeQnap(),
         page_size=100,
         batch_size=2,
+        nas_id=nas_id,
     ).run()
 
     with Session(database) as session:
@@ -106,8 +126,8 @@ async def test_successful_scan_indexes_tree_and_deletes_stale(database):
             )
         )
         scan = session.scalar(
-            select(ScanRun).order_by(
-                ScanRun.id.desc()
+            select(SyncRun).order_by(
+                SyncRun.id.desc()
             )
         )
 
@@ -130,8 +150,10 @@ async def test_failed_directory_preserves_stale_rows(database):
 
     now = datetime.now(UTC)
     with Session(database) as session:
+        nas_id = create_nas(session)
         session.add(
             Entry(
+                nas_id=nas_id,
                 name="old.txt",
                 full_path="/Public/old.txt",
                 parent_path="/Public",
@@ -150,6 +172,7 @@ async def test_failed_directory_preserves_stale_rows(database):
         lambda: FailingQnap(),
         page_size=100,
         batch_size=100,
+        nas_id=nas_id,
     ).run()
 
     with Session(database) as session:
@@ -161,8 +184,8 @@ async def test_failed_directory_preserves_stale_rows(database):
             == 2
         )
         scan = session.scalar(
-            select(ScanRun).order_by(
-                ScanRun.id.desc()
+            select(SyncRun).order_by(
+                SyncRun.id.desc()
             )
         )
         assert scan.status == "failed"
@@ -176,17 +199,21 @@ async def test_failed_directory_records_unknown_status_message(database):
                 raise QnapProtocolError(status=5)
             yield
 
+    with Session(database) as session:
+        nas_id = create_nas(session)
+
     await Scanner(
         database,
         lambda: FailingQnap(),
         page_size=100,
         batch_size=100,
+        nas_id=nas_id,
     ).run()
 
     with Session(database) as session:
         scan = session.scalar(
-            select(ScanRun).order_by(
-                ScanRun.id.desc()
+            select(SyncRun).order_by(
+                SyncRun.id.desc()
             )
         )
 
@@ -227,12 +254,16 @@ async def test_scan_skips_recycle_directory(database):
                 yield row
 
     qnap = RecycleQnap()
+    with Session(database) as session:
+        nas_id = create_nas(session)
+
     await Scanner(
         database,
         lambda: qnap,
         page_size=100,
         batch_size=2,
         skip_recycle=True,
+        nas_id=nas_id,
     ).run()
 
     with Session(database) as session:
@@ -304,12 +335,16 @@ async def test_scan_fetches_directories_concurrently(database):
                 self.in_flight -= 1
 
     qnap = ConcurrentQnap()
+    with Session(database) as session:
+        nas_id = create_nas(session)
+
     await Scanner(
         database,
         lambda: qnap,
         page_size=100,
         batch_size=10,
         concurrency=2,
+        nas_id=nas_id,
     ).run()
 
     assert qnap.max_in_flight >= 2

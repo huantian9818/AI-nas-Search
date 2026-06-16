@@ -10,8 +10,9 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
 from nas_index.qnap.errors import QnapError
+from nas_index.repositories.entries import DEFAULT_NAS_ID
 from nas_index.repositories.entries import EntryRepository
-from nas_index.repositories.scans import ScanRepository
+from nas_index.repositories.syncs import SyncRepository
 from nas_index.types import IndexedItem
 
 
@@ -38,11 +39,13 @@ class Scanner:
         page_size: int,
         batch_size: int,
         *,
+        nas_id: int = DEFAULT_NAS_ID,
         concurrency: int = 1,
         progress_interval_seconds: float = 0.0,
         skip_recycle: bool = False,
     ):
         self.engine = engine
+        self.nas_id = nas_id
         self.client_factory = client_factory
         self.page_size = page_size
         self.batch_size = batch_size
@@ -55,7 +58,11 @@ class Scanner:
 
     async def run(self) -> int:
         with Session(self.engine) as session:
-            run = ScanRepository(session).create()
+            run = SyncRepository(session).create_run(
+                nas_id=self.nas_id,
+                scope="nas",
+                share_path=None,
+            )
             run_id = run.id
             generation = run.generation
             session.commit()
@@ -101,8 +108,8 @@ class Scanner:
             with Session(self.engine) as session:
                 EntryRepository(
                     session
-                ).delete_stale(generation)
-                ScanRepository(session).succeed(
+                ).delete_stale(self.nas_id, generation)
+                SyncRepository(session).succeed(
                     run_id,
                     processed,
                 )
@@ -137,7 +144,7 @@ class Scanner:
                     processed,
                 )
             with Session(self.engine) as session:
-                ScanRepository(session).fail(
+                SyncRepository(session).fail(
                     run_id,
                     current_path,
                     reason,
@@ -292,6 +299,7 @@ class Scanner:
             return
         with Session(self.engine) as session:
             EntryRepository(session).upsert_batch(
+                self.nas_id,
                 batch,
                 generation,
             )
@@ -304,7 +312,7 @@ class Scanner:
         path: str,
     ) -> None:
         with Session(self.engine) as session:
-            ScanRepository(session).progress(
+            SyncRepository(session).progress(
                 run_id,
                 processed,
                 path,

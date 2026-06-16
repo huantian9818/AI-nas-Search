@@ -3,8 +3,9 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from nas_index.models import Entry, ScanRun
+from nas_index.models import Entry, SyncRun
 from nas_index.qnap.client import QnapClient
+from nas_index.repositories.nas import NasRepository
 from nas_index.services.scanner import Scanner
 from nas_index.types import NasConnection
 
@@ -87,6 +88,20 @@ async def test_real_qnap_adapter_and_scanner_index_complete_tree(
         "indexer",
         "secret",
     )
+    with Session(database) as session:
+        nas_id = NasRepository(session).create_server(
+            name="Test NAS",
+            base_url="http://nas.local",
+            port=8080,
+            use_https=False,
+            enabled=True,
+            sync_interval_minutes=30,
+            full_resync_interval_hours=24,
+            username="indexer",
+            password="secret",
+        ).id
+        session.commit()
+
     async with httpx.AsyncClient(
         transport=httpx.MockTransport(handler)
     ) as http:
@@ -96,9 +111,10 @@ async def test_real_qnap_adapter_and_scanner_index_complete_tree(
                 connection,
                 http=http,
             ),
-            page_size=100,
-            batch_size=2,
-        )
+                page_size=100,
+                batch_size=2,
+                nas_id=nas_id,
+            )
         await scanner.run()
 
     with Session(database) as session:
@@ -113,7 +129,7 @@ async def test_real_qnap_adapter_and_scanner_index_complete_tree(
         }
         assert (
             session.scalar(
-                select(ScanRun.status)
+                select(SyncRun.status)
             )
             == "succeeded"
         )
