@@ -109,7 +109,6 @@ class Entry(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     __table_args__ = (
-        UniqueConstraint("full_path", name="uq_entries_full_path"),
         UniqueConstraint("nas_id", "full_path", name="uq_entries_nas_full_path"),
         CheckConstraint(
             "entry_type IN ('file', 'directory')",
