@@ -41,8 +41,12 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 session
             ).interrupt_running()
             session.commit()
-        yield
-        engine.dispose()
+        _app.state.sync_manager.start_scheduler()
+        try:
+            yield
+        finally:
+            await _app.state.sync_manager.stop_scheduler()
+            engine.dispose()
 
     app = FastAPI(title="QNAP File Index", lifespan=lifespan)
     app.state.settings = settings
@@ -87,7 +91,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         )
 
     app.state.sync_manager = SyncManager(
-        scanner_factory
+        scanner_factory,
+        session_factory=session_factory,
+        poll_seconds=settings.sync_scheduler_poll_seconds,
     )
     app.mount(
         "/static",

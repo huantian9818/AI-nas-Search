@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 import logging
 from pathlib import PurePosixPath
 from time import monotonic
@@ -12,6 +13,7 @@ from sqlalchemy.orm import Session
 from nas_index.qnap.errors import QnapError
 from nas_index.repositories.entries import DEFAULT_NAS_ID
 from nas_index.repositories.entries import EntryRepository
+from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
 from nas_index.types import IndexedItem
 
@@ -89,6 +91,9 @@ class Scanner:
                     shares,
                     generation,
                 )
+                share_paths = tuple(
+                    item.full_path for item in shares
+                )
                 processed += len(shares)
 
                 processed, current_path = (
@@ -109,7 +114,14 @@ class Scanner:
                 EntryRepository(
                     session
                 ).delete_stale(self.nas_id, generation)
-                SyncRepository(session).succeed(
+                syncs = SyncRepository(session)
+                self._schedule_next_share_syncs(
+                    session,
+                    syncs,
+                    share_paths,
+                    generation,
+                )
+                syncs.succeed(
                     run_id,
                     processed,
                 )
@@ -203,6 +215,14 @@ class Scanner:
                 pending_directories -= 1
                 if isinstance(result, DirectoryFailure):
                     raise result.error
+
+                self._replace_children(
+                    result.path,
+                    {
+                        item.full_path
+                        for item in result.items
+                    },
+                )
 
                 if result.items:
                     batch.extend(result.items)
@@ -304,6 +324,48 @@ class Scanner:
                 generation,
             )
             session.commit()
+
+    def _replace_children(
+        self,
+        parent_path: str,
+        observed_full_paths: set[str],
+    ) -> None:
+        with Session(self.engine) as session:
+            EntryRepository(session).replace_children(
+                self.nas_id,
+                parent_path,
+                observed_full_paths,
+            )
+            session.commit()
+
+    def _schedule_next_share_syncs(
+        self,
+        session: Session,
+        syncs: SyncRepository,
+        share_paths: tuple[str, ...],
+        generation: int,
+    ) -> None:
+        server = NasRepository(session).get_server(
+            self.nas_id
+        )
+        if server is None:
+            return
+        next_sync_at = datetime.now(UTC) + timedelta(
+            minutes=server.sync_interval_minutes
+        )
+        for share_path in share_paths:
+            syncs.ensure_share_state(
+                nas_id=self.nas_id,
+                share_path=share_path,
+                next_sync_at=next_sync_at,
+            )
+            syncs.mark_share_succeeded(
+                nas_id=self.nas_id,
+                share_path=share_path,
+                generation=generation,
+                next_sync_at=next_sync_at,
+                full=True,
+            )
 
     def _progress(
         self,

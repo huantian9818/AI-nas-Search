@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select
@@ -11,6 +11,8 @@ from nas_index.qnap.errors import (
     QnapProtocolError,
 )
 from nas_index.repositories.nas import NasRepository
+from nas_index.repositories.entries import EntryRepository
+from nas_index.repositories.syncs import SyncRepository
 from nas_index.services.scanner import Scanner
 from nas_index.types import IndexedItem
 
@@ -88,6 +90,104 @@ class FakeQnap:
         }[path]
         for row in rows:
             yield row
+
+
+@pytest.mark.asyncio
+async def test_successful_scan_schedules_next_share_sync(database):
+    with Session(database) as session:
+        nas_id = create_nas(session)
+    before = datetime.now(UTC).replace(tzinfo=None)
+
+    await Scanner(
+        database,
+        lambda: FakeQnap(),
+        page_size=100,
+        batch_size=2,
+        nas_id=nas_id,
+    ).run()
+
+    with Session(database) as session:
+        state = SyncRepository(session).get_share_state(
+            nas_id,
+            "/Public",
+        )
+        scan = session.scalar(
+            select(SyncRun).order_by(
+                SyncRun.id.desc()
+            )
+        )
+
+    assert state is not None
+    assert scan is not None
+    assert state.status == "succeeded"
+    assert state.last_generation == scan.generation
+    assert state.next_sync_at >= before + timedelta(minutes=29)
+
+
+@pytest.mark.asyncio
+async def test_successful_directory_sync_deletes_missing_direct_children(
+    database,
+):
+    with Session(database) as session:
+        nas_id = create_nas(session)
+        EntryRepository(session).upsert_batch(
+            nas_id,
+            [
+                IndexedItem(
+                    "old.txt",
+                    "/Public/old.txt",
+                    "/Public",
+                    "file",
+                    1,
+                    None,
+                    "/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+
+    class ChangedQnap(FakeQnap):
+        async def iter_children(self, path, *, page_size):
+            rows = {
+                "/Public": [
+                    IndexedItem(
+                        "new.txt",
+                        "/Public/new.txt",
+                        "/Public",
+                        "file",
+                        1,
+                        None,
+                        "/Public",
+                    ),
+                ],
+            }[path]
+            for row in rows:
+                yield row
+
+    await Scanner(
+        database,
+        lambda: ChangedQnap(),
+        page_size=100,
+        batch_size=100,
+        nas_id=nas_id,
+    ).run()
+
+    with Session(database) as session:
+        paths = [
+            entry.full_path
+            for entry in EntryRepository(session)
+            .list_children(
+                nas_id,
+                "/Public",
+                allowed_share_paths=("/Public",),
+                page=1,
+                page_size=100,
+            )
+            .items
+        ]
+
+    assert paths == ["/Public/new.txt"]
 
 
 @pytest.mark.asyncio
