@@ -1,14 +1,19 @@
 from pathlib import Path
+from urllib.parse import urlsplit
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine, event, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from nas_index.models import Base
 
 
 FTS_DDL = (
+    "DROP TRIGGER IF EXISTS entries_ai",
+    "DROP TRIGGER IF EXISTS entries_ad",
+    "DROP TRIGGER IF EXISTS entries_au",
+    "DROP TABLE IF EXISTS entry_search",
     """
-    CREATE VIRTUAL TABLE IF NOT EXISTS entry_search USING fts5(
+    CREATE VIRTUAL TABLE entry_search USING fts5(
         name,
         content='entries',
         content_rowid='id',
@@ -16,23 +21,27 @@ FTS_DDL = (
     )
     """,
     """
-    CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
+    CREATE TRIGGER entries_ai AFTER INSERT ON entries BEGIN
       INSERT INTO entry_search(rowid, name) VALUES (new.id, new.name);
     END
     """,
     """
-    CREATE TRIGGER IF NOT EXISTS entries_ad AFTER DELETE ON entries BEGIN
+    CREATE TRIGGER entries_ad AFTER DELETE ON entries BEGIN
       INSERT INTO entry_search(entry_search, rowid, name)
       VALUES ('delete', old.id, old.name);
     END
     """,
     """
-    CREATE TRIGGER IF NOT EXISTS entries_au AFTER UPDATE OF name ON entries
+    CREATE TRIGGER entries_au AFTER UPDATE OF name ON entries
     WHEN old.name IS NOT new.name BEGIN
       INSERT INTO entry_search(entry_search, rowid, name)
       VALUES ('delete', old.id, old.name);
       INSERT INTO entry_search(rowid, name) VALUES (new.id, new.name);
     END
+    """,
+    """
+    INSERT INTO entry_search(rowid, name)
+    SELECT id, name FROM entries
     """,
 )
 
@@ -63,7 +72,155 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 
 def init_database(engine: Engine) -> None:
+    _migrate_legacy_schema(engine)
     Base.metadata.create_all(engine)
+    _migrate_legacy_schema(engine)
     with engine.begin() as connection:
         for statement in FTS_DDL:
             connection.exec_driver_sql(statement)
+
+
+def _migrate_legacy_schema(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    table_names = set(inspect(engine).get_table_names())
+    if "entries" in table_names:
+        _migrate_entries_table(engine)
+    Base.metadata.create_all(engine)
+    table_names = set(inspect(engine).get_table_names())
+    if "nas_config" in table_names:
+        _migrate_single_nas_config(engine)
+    if "entries" in table_names:
+        _backfill_entry_scope(engine)
+
+
+def _migrate_entries_table(engine: Engine) -> None:
+    with engine.begin() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                text("PRAGMA table_info(entries)")
+            ).mappings()
+        }
+        if "nas_id" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE entries ADD COLUMN nas_id INTEGER NOT NULL DEFAULT 1"
+            )
+        if "share_path" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE entries ADD COLUMN share_path TEXT NOT NULL DEFAULT '/'"
+            )
+        connection.exec_driver_sql(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_entries_nas_full_path
+            ON entries (nas_id, full_path)
+            """
+        )
+
+
+def _migrate_single_nas_config(engine: Engine) -> None:
+    with engine.begin() as connection:
+        existing_server_id = connection.execute(
+            text("SELECT id FROM nas_servers ORDER BY id LIMIT 1")
+        ).scalar()
+        legacy = connection.execute(
+            text(
+                """
+                SELECT base_url, port, use_https, username, password, updated_at
+                FROM nas_config
+                WHERE id = 1
+                """
+            )
+        ).mappings().first()
+        if legacy is None or existing_server_id is not None:
+            return
+
+        parsed = urlsplit(str(legacy["base_url"]))
+        name = (
+            parsed.hostname
+            or str(legacy["base_url"])
+            .removeprefix("http://")
+            .removeprefix("https://")
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO nas_servers (
+                    name, base_url, port, use_https, enabled,
+                    sync_interval_minutes, full_resync_interval_hours,
+                    created_at, updated_at
+                )
+                VALUES (
+                    :name, :base_url, :port, :use_https, 1,
+                    30, 24, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                """
+            ),
+            {
+                "name": name,
+                "base_url": legacy["base_url"],
+                "port": legacy["port"],
+                "use_https": legacy["use_https"],
+            },
+        )
+        nas_id = connection.execute(
+            text("SELECT id FROM nas_servers ORDER BY id LIMIT 1")
+        ).scalar_one()
+        connection.execute(
+            text(
+                """
+                INSERT INTO nas_credentials (
+                    nas_id, username, password, updated_at
+                )
+                VALUES (
+                    :nas_id, :username, :password, :updated_at
+                )
+                """
+            ),
+            {
+                "nas_id": nas_id,
+                "username": legacy["username"],
+                "password": legacy["password"],
+                "updated_at": legacy["updated_at"],
+            },
+        )
+        connection.execute(
+            text("UPDATE entries SET nas_id = :nas_id WHERE nas_id = 1"),
+            {"nas_id": nas_id},
+        )
+
+
+def _backfill_entry_scope(engine: Engine) -> None:
+    with engine.begin() as connection:
+        rows = connection.execute(
+            text(
+                """
+                SELECT id, full_path
+                FROM entries
+                WHERE share_path = '/' OR share_path IS NULL
+                """
+            )
+        ).mappings()
+        for row in rows:
+            connection.execute(
+                text(
+                    """
+                    UPDATE entries
+                    SET share_path = :share_path
+                    WHERE id = :id
+                    """
+                ),
+                {
+                    "share_path": _share_path_from_full_path(
+                        row["full_path"]
+                    ),
+                    "id": row["id"],
+                },
+            )
+
+
+def _share_path_from_full_path(full_path: str) -> str:
+    parts = [part for part in full_path.replace("\\", "/").split("/") if part]
+    if not parts:
+        return "/"
+    return f"/{parts[0]}"
