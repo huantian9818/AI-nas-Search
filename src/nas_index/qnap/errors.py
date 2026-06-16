@@ -23,3 +23,12 @@ class QnapPermissionError(QnapError):
 
 class QnapProtocolError(QnapError):
     user_message = "NAS 返回了无法识别的数据"
+
+    def __init__(self, status: object | None = None):
+        super().__init__()
+        self.status = status
+
+    def __str__(self) -> str:
+        if self.status is None:
+            return self.user_message
+        return f"NAS 返回了未识别的状态码 {self.status}"

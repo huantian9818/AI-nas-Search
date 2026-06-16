@@ -23,6 +23,14 @@ uv run uvicorn nas_index.web.app:app --reload
 - 数据库覆盖：`NAS_INDEX_DATABASE_URL=sqlite:////absolute/path/index.db`
 - 默认日志目录：`logs`
 - 日志目录覆盖：`NAS_INDEX_LOG_DIR=/absolute/path/logs`
+- 默认扫描并发：`4`
+- 扫描并发覆盖：`NAS_INDEX_SCAN_CONCURRENCY=4`
+- 默认批量写入：`500`
+- 批量写入覆盖：`NAS_INDEX_SCAN_BATCH_SIZE=500`
+- 默认进度刷新间隔：`2` 秒
+- 进度刷新覆盖：`NAS_INDEX_SCAN_PROGRESS_INTERVAL_SECONDS=2`
+- 默认跳过回收站目录 `@Recycle`
+- 回收站过滤覆盖：`NAS_INDEX_SCAN_SKIP_RECYCLE=0`
 
 首次扫描 10 万至 100 万条记录可能耗时较长。扫描失败或程序中断时会保留旧索引；
 只有完整成功的扫描才会删除已不存在的旧记录。

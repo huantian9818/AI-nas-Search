@@ -1,0 +1,24 @@
+{% from "partials/file_icons.html" import file_icon, folder_icon %}
+{% macro render_search_tree(nodes, nested=false) -%}
+<ul class="tree-list{% if nested %} tree-list-nested{% endif %}">
+  {% for node in nodes %}
+    {% set is_directory = node.entry.entry_type == "directory" %}
+    <li class="tree-item{% if loop.last %} is-last{% endif %}">
+      <a class="tree-link{% if node.is_selected or node.is_current %} is-current{% elif node.is_ancestor %} is-ancestor{% endif %}"
+         href="{% if is_directory %}/browse?path={{ node.entry.full_path | urlencode }}{% else %}/browse?path={{ node.entry.parent_path | urlencode }}&amp;selected={{ node.entry.id }}{% endif %}">
+        <span class="item-label">
+          {% if is_directory %}
+            {{ folder_icon() }}
+          {% else %}
+            {{ file_icon() }}
+          {% endif %}
+          <span>{{ highlight_match(node.entry.name) }}</span>
+        </span>
+      </a>
+      {% if node.children %}
+        {{ render_search_tree(node.children, true) }}
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}

@@ -47,8 +47,11 @@ def configure_logging(log_dir: Path) -> None:
     )
     logger = logging.getLogger("nas_index")
     logger.setLevel(logging.INFO)
+    for existing in logger.handlers:
+        existing.close()
     logger.handlers.clear()
     logger.addHandler(handler)
+    logger.propagate = False
     logging.getLogger("httpx").setLevel(
         logging.WARNING
     )

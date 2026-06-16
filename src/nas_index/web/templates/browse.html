@@ -1,73 +1,81 @@
 {% extends "base.html" %}
 {% block title %}目录 - QNAP 文件索引{% endblock %}
 {% block content %}
-<h1>目录浏览</h1>
-<div class="browser-layout">
-  <aside>
-    <ul>
-    {% for directory in root_directories %}
-      <li>
-        <a href="/browse?path={{ directory.full_path | urlencode }}">
-          {{ directory.name }}
-        </a>
-        <button type="button"
-                hx-get="/browse/tree?path={{ directory.full_path | urlencode }}"
-                hx-target="next .tree-children">
-          展开
-        </button>
-        <div class="tree-children"></div>
-      </li>
-    {% endfor %}
-    </ul>
-  </aside>
-  <section>
-    <h2>{{ path }}</h2>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>类型</th>
-            <th>大小</th>
-            <th>修改时间</th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for item in listing.items %}
-          <tr class="{% if selected == item.id %}selected{% endif %}">
-            <td>
-              {% if item.entry_type == "directory" %}
-                <a href="/browse?path={{ item.full_path | urlencode }}">
-                  {{ item.name }}
-                </a>
-              {% else %}
-                {{ item.name }}
-              {% endif %}
-            </td>
-            <td>
-              {{ "文件夹" if item.entry_type == "directory" else "文件" }}
-            </td>
-            <td>
-              {{ item.size_bytes if item.size_bytes is not none else "-" }}
-            </td>
-            <td>{{ item.modified_at or "-" }}</td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
-    <nav class="pagination">
-      {% if listing.page > 1 %}
-        <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page - 1 }}">
-          上一页
-        </a>
-      {% endif %}
-      {% if listing.page * listing.page_size < listing.total %}
-        <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page + 1 }}">
-          下一页
-        </a>
-      {% endif %}
-    </nav>
+{% from "partials/file_icons.html" import file_icon, folder_icon %}
+<div class="page compact-page">
+  <section class="section-block">
+    <h1>目录</h1>
   </section>
+
+  <div class="browser-layout">
+    <aside class="section-block browse-sidebar">
+      <p>共享目录</p>
+      {% from "partials/tree_nodes.html" import render_tree %}
+      {{ render_tree(tree_nodes) }}
+    </aside>
+
+    <section class="section-block browse-main">
+      <p class="current-path">
+        当前路径：
+        <span class="item-label">
+          {{ folder_icon() }}
+          <code>{{ path }}</code>
+        </span>
+      </p>
+      <p>共 {{ listing.total }} 项</p>
+
+      {% if listing.items %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>类型</th>
+                <th>大小</th>
+                <th>修改时间</th>
+              </tr>
+            </thead>
+            <tbody>
+            {% for item in listing.items %}
+              <tr class="{% if selected == item.id %}selected{% endif %}">
+                <td>
+                  <span class="item-label">
+                    {% if item.entry_type == "directory" %}
+                      {{ folder_icon() }}
+                      <a href="/browse?path={{ item.full_path | urlencode }}">
+                        {{ item.name }}
+                      </a>
+                    {% else %}
+                      {{ file_icon() }}
+                      <span>{{ item.name }}</span>
+                    {% endif %}
+                  </span>
+                </td>
+                <td>{{ "文件夹" if item.entry_type == "directory" else "文件" }}</td>
+                <td>{{ item.size_bytes if item.size_bytes is not none else "—" }}</td>
+                <td>{{ item.modified_at or "—" }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p>这个目录下没有内容。</p>
+      {% endif %}
+
+      <nav class="pagination">
+        {% if listing.page > 1 %}
+          <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page - 1 }}">
+            上一页
+          </a>
+        {% endif %}
+        {% if listing.page * listing.page_size < listing.total %}
+          <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page + 1 }}">
+            下一页
+          </a>
+        {% endif %}
+      </nav>
+    </section>
+  </div>
 </div>
 {% endblock %}

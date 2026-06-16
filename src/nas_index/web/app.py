@@ -73,6 +73,11 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             ),
             page_size=settings.scan_page_size,
             batch_size=settings.scan_batch_size,
+            concurrency=settings.scan_concurrency,
+            progress_interval_seconds=(
+                settings.scan_progress_interval_seconds
+            ),
+            skip_recycle=settings.scan_skip_recycle,
         )
 
     app.state.scan_manager = ScanManager(

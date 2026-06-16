@@ -1,0 +1,25 @@
+{% macro folder_icon() -%}
+<svg class="item-icon" viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M1.5 4.5h4l1.2 1.5h7.8v6.5H1.5z"
+        fill="none"
+        stroke="currentColor"
+        stroke-linejoin="round" />
+</svg>
+{%- endmacro %}
+
+{% macro file_icon() -%}
+<svg class="item-icon" viewBox="0 0 16 16" aria-hidden="true">
+  <path d="M4.5 1.5h5l3 3v10h-8z"
+        fill="none"
+        stroke="currentColor"
+        stroke-linejoin="round" />
+  <path d="M9.5 1.5v3h3"
+        fill="none"
+        stroke="currentColor"
+        stroke-linejoin="round" />
+  <path d="M6 8h4M6 10.5h3.5"
+        fill="none"
+        stroke="currentColor"
+        stroke-linecap="round" />
+</svg>
+{%- endmacro %}

@@ -1,58 +1,109 @@
 {% extends "base.html" %}
+{% from "partials/file_icons.html" import file_icon, folder_icon %}
+{% from "partials/search_tree_nodes.html" import render_search_tree with context %}
+{% macro render_breadcrumb(parts, root_label="根目录") -%}
+<span class="search-breadcrumb">
+  {% if parts %}
+    {% for crumb in parts %}
+      <span>{{ highlight_match(crumb.name) }}</span>
+      {% if not loop.last %}
+        <span class="search-breadcrumb-separator">/</span>
+      {% endif %}
+    {% endfor %}
+  {% else %}
+    <span>{{ root_label }}</span>
+  {% endif %}
+</span>
+{%- endmacro %}
 {% block title %}搜索 - QNAP 文件索引{% endblock %}
 {% block content %}
-<h1>搜索</h1>
-<form method="get" action="/search">
-  <input name="q"
-         value="{{ query }}"
-         placeholder="文件名或文件夹名">
-  <button type="submit">搜索</button>
-</form>
-{% if query %}
-  <p>找到 {{ results.total }} 条结果</p>
-  <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>名称</th>
-          <th>类型</th>
-          <th>大小</th>
-          <th>修改时间</th>
-          <th>完整路径</th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for item in results.items %}
-        <tr>
-          <td>
-            <a href="/browse?path={{ item.parent_path | urlencode }}&amp;selected={{ item.id }}">
-              {{ item.name }}
-            </a>
-          </td>
-          <td>
-            {{ "文件夹" if item.entry_type == "directory" else "文件" }}
-          </td>
-          <td>
-            {{ item.size_bytes if item.size_bytes is not none else "-" }}
-          </td>
-          <td>{{ item.modified_at or "-" }}</td>
-          <td><code>{{ item.full_path }}</code></td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
-  <nav class="pagination">
-    {% if results.page > 1 %}
-      <a href="/search?q={{ query | urlencode }}&amp;page={{ results.page - 1 }}">
-        上一页
-      </a>
+<div class="page compact-page">
+  <section class="section-block">
+    <h1>搜索</h1>
+    <form method="get" action="/search" class="search-form">
+      <input name="q"
+             value="{{ query }}"
+             placeholder="文件名或文件夹名"
+             aria-label="搜索文件名或目录名">
+      <button type="submit">搜索</button>
+    </form>
+  </section>
+
+  {% if query %}
+    <section class="section-block">
+      {% if results.total %}
+        <p>共 {{ results.total }} 条结果，分布在 {{ result_groups | length }} 个目录。</p>
+      {% else %}
+        <p>没有找到与 “{{ query }}” 相关的内容。</p>
+        <p class="plain-note">
+          可以试试更短的关键词，或者换成文件名中的另一个词。
+        </p>
+      {% endif %}
+    </section>
+
+    {% if results.total %}
+      <div class="browser-layout">
+        <aside class="section-block browse-sidebar">
+          <p>命中目录</p>
+          {{ render_search_tree(tree_nodes) }}
+        </aside>
+
+        <section class="section-block browse-main">
+          {% for group in result_groups %}
+            <section class="section-block search-group">
+              <div class="search-group-header">
+                <p class="current-path">
+                  目录：
+                  <span class="item-label">
+                    {{ folder_icon() }}
+                    <span>{{ render_breadcrumb(group.breadcrumbs) }}</span>
+                  </span>
+                </p>
+                <p>命中 {{ group.items | length }} 条</p>
+              </div>
+              <ul class="search-result-list">
+                {% for item in group.items %}
+                  {% set is_directory = item.entry_type == "directory" %}
+                  <li class="search-result-item">
+                    <span class="item-label">
+                      {% if is_directory %}
+                        {{ folder_icon() }}
+                        <a href="/browse?path={{ item.full_path | urlencode }}">
+                          {{ highlight_match(item.name) }}
+                        </a>
+                      {% else %}
+                        {{ file_icon() }}
+                        <a href="/browse?path={{ item.parent_path | urlencode }}&amp;selected={{ item.id }}">
+                          {{ highlight_match(item.name) }}
+                        </a>
+                      {% endif %}
+                    </span>
+                  </li>
+                {% endfor %}
+              </ul>
+            </section>
+          {% endfor %}
+
+          <nav class="pagination">
+            {% if previous_page %}
+              <a href="/search?q={{ query | urlencode }}&amp;page={{ previous_page }}">
+                上一页
+              </a>
+            {% endif %}
+            {% if next_page %}
+              <a href="/search?q={{ query | urlencode }}&amp;page={{ next_page }}">
+                下一页
+              </a>
+            {% endif %}
+          </nav>
+        </section>
+      </div>
     {% endif %}
-    {% if results.page * results.page_size < results.total %}
-      <a href="/search?q={{ query | urlencode }}&amp;page={{ results.page + 1 }}">
-        下一页
-      </a>
-    {% endif %}
-  </nav>
-{% endif %}
+  {% else %}
+    <section class="section-block">
+      <p>输入关键词后显示结果。</p>
+      <p class="plain-note">左侧只显示包含结果的目录分支。</p>
+    </section>
+  {% endif %}
+</div>
 {% endblock %}

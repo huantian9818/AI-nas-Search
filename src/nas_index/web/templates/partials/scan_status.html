@@ -1,14 +1,16 @@
 {% if scan and scan.status == "running" %}
-<section hx-get="/scans/status"
+<section class="section-block"
+         hx-get="/scans/status"
          hx-trigger="every 2s"
          hx-swap="outerHTML">
-  <strong>正在扫描</strong>
-  <span>{{ scan.processed_entries }} 条</span>
-  <code>{{ scan.current_path or "/" }}</code>
+  <p>状态：正在扫描</p>
+  <p>已处理：{{ scan.processed_entries }} 条</p>
+  <p>路径：<code>{{ scan.current_path or "/" }}</code></p>
 </section>
 {% elif scan %}
-<section>
-  <strong>
+<section class="section-block">
+  <p>
+    状态：
     {{
       {
         "succeeded": "扫描完成",
@@ -16,12 +18,14 @@
         "interrupted": "扫描中断"
       }[scan.status]
     }}
-  </strong>
-  <span>{{ scan.processed_entries }} 条</span>
+  </p>
+  <p>已处理：{{ scan.processed_entries }} 条</p>
   {% if scan.error_summary %}
-    <p>{{ scan.error_summary }}</p>
+    <p>原因：{{ scan.error_summary }}</p>
   {% endif %}
 </section>
 {% else %}
-<section>尚未扫描</section>
+<section class="section-block">
+  <p>状态：尚未扫描</p>
+</section>
 {% endif %}

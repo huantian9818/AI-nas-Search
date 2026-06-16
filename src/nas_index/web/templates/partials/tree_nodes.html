@@ -1,0 +1,15 @@
+{% macro render_tree(nodes, nested=false) -%}
+<ul class="tree-list{% if nested %} tree-list-nested{% endif %}">
+  {% for node in nodes %}
+    <li class="tree-item{% if loop.last %} is-last{% endif %}">
+      <a class="tree-link{% if node.is_current %} is-current{% elif node.is_ancestor %} is-ancestor{% endif %}"
+         href="/browse?path={{ node.entry.full_path | urlencode }}">
+        {{ node.entry.name }}
+      </a>
+      {% if node.children %}
+        {{ render_tree(node.children, true) }}
+      {% endif %}
+    </li>
+  {% endfor %}
+</ul>
+{%- endmacro %}

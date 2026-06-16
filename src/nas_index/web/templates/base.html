@@ -8,15 +8,31 @@
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
-  <header>
-    <a href="/">QNAP 文件索引</a>
-    <nav>
-      <a href="/">概览</a>
-      <a href="/browse">目录</a>
-      <a href="/search">搜索</a>
-      <a href="/settings">设置</a>
-    </nav>
-  </header>
-  <main>{% block content %}{% endblock %}</main>
+  <div class="site-shell">
+    <header class="site-header">
+      <p class="site-title">
+        <a href="/">QNAP 文件索引</a>
+      </p>
+      <nav class="site-nav" aria-label="主导航">
+        <a class="{% if request.url.path == '/' %}is-active{% endif %}"
+           href="/">
+          概览
+        </a>
+        <a class="{% if request.url.path.startswith('/browse') %}is-active{% endif %}"
+           href="/browse">
+          目录
+        </a>
+        <a class="{% if request.url.path.startswith('/search') %}is-active{% endif %}"
+           href="/search">
+          搜索
+        </a>
+        <a class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}"
+           href="/settings">
+          设置
+        </a>
+      </nav>
+    </header>
+    <main class="page-shell">{% block content %}{% endblock %}</main>
+  </div>
 </body>
 </html>

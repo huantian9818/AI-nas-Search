@@ -7,7 +7,10 @@ class AppSettings(BaseSettings):
     database_url: str = "sqlite:///data/nas-index.db"
     log_dir: Path = Path("logs")
     scan_page_size: int = 500
-    scan_batch_size: int = 100
+    scan_batch_size: int = 500
+    scan_concurrency: int = 4
+    scan_progress_interval_seconds: float = 2.0
+    scan_skip_recycle: bool = True
     qnap_timeout_seconds: float = 20.0
     qnap_retry_attempts: int = 3
 

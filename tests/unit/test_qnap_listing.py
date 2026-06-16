@@ -7,6 +7,7 @@ from nas_index.qnap.client import QnapClient
 from nas_index.qnap.errors import (
     QnapAuthenticationError,
     QnapPermissionError,
+    QnapProtocolError,
 )
 from nas_index.types import NasConnection
 
@@ -135,6 +136,30 @@ async def test_listing_maps_qnap_status(status, exception):
 
 
 @pytest.mark.asyncio
+async def test_listing_reports_unknown_qnap_status():
+    transport = httpx.MockTransport(
+        lambda _request: httpx.Response(
+            200,
+            json={"status": 5, "success": "true"},
+        )
+    )
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = QnapClient(CONNECTION, http=http)
+        client.sid = "sid"
+        with pytest.raises(
+            QnapProtocolError,
+            match="状态码 5",
+        ):
+            _ = [
+                item
+                async for item in client.iter_children(
+                    "/Public",
+                    page_size=100,
+                )
+            ]
+
+
+@pytest.mark.asyncio
 async def test_listing_retries_transient_connection_failure(monkeypatch):
     attempts = 0
 
@@ -166,3 +191,30 @@ async def test_listing_retries_transient_connection_failure(monkeypatch):
         assert await client.list_shares() == []
 
     assert attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_listing_percent_encodes_spaces_in_path():
+    seen_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_url
+        seen_url = str(request.url)
+        return httpx.Response(
+            200,
+            json={"total": 0, "datas": []},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = QnapClient(CONNECTION, http=http)
+        client.sid = "sid"
+        _ = [
+            item
+            async for item in client.iter_children(
+                "/Public/Space Folder",
+                page_size=100,
+            )
+        ]
+
+    assert "path=%2FPublic%2FSpace%20Folder" in seen_url
