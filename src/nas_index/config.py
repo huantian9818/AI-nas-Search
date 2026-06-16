@@ -13,6 +13,8 @@ class AppSettings(BaseSettings):
     scan_skip_recycle: bool = True
     qnap_timeout_seconds: float = 20.0
     qnap_retry_attempts: int = 3
+    user_access_ttl_seconds: int = 900
+    sync_scheduler_poll_seconds: float = 10.0
 
     model_config = SettingsConfigDict(
         env_prefix="NAS_INDEX_",
