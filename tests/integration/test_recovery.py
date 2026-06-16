@@ -3,7 +3,8 @@ from datetime import UTC, datetime
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from nas_index.models import ScanRun
+from nas_index.models import SyncRun
+from nas_index.repositories.nas import NasRepository
 from nas_index.web.app import create_app
 
 
@@ -12,8 +13,22 @@ def test_startup_marks_orphaned_running_scan_interrupted(
 ):
     app = create_app(settings)
     with Session(app.state.engine) as session:
+        nas_id = NasRepository(session).create_server(
+            name="Test NAS",
+            base_url="http://nas.local",
+            port=8080,
+            use_https=False,
+            enabled=True,
+            sync_interval_minutes=30,
+            full_resync_interval_hours=24,
+            username="indexer",
+            password="secret",
+        ).id
         session.add(
-            ScanRun(
+            SyncRun(
+                nas_id=nas_id,
+                scope="nas",
+                share_path=None,
                 generation=1,
                 status="running",
                 started_at=datetime.now(UTC),
@@ -30,6 +45,6 @@ def test_startup_marks_orphaned_running_scan_interrupted(
 
     with Session(app.state.engine) as session:
         assert (
-            session.query(ScanRun).one().status
+            session.query(SyncRun).one().status
             == "interrupted"
         )

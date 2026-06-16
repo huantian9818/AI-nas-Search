@@ -3,14 +3,29 @@ from datetime import UTC, datetime
 import pytest
 from sqlalchemy.orm import Session
 
-from nas_index.models import ScanRun
+from nas_index.models import SyncRun
+from nas_index.repositories.nas import NasRepository
 
 
 @pytest.fixture
 def running_scan(client):
     with Session(client.app.state.engine) as session:
+        nas_id = NasRepository(session).create_server(
+            name="Test NAS",
+            base_url="http://nas.local",
+            port=8080,
+            use_https=False,
+            enabled=True,
+            sync_interval_minutes=30,
+            full_resync_interval_hours=24,
+            username="indexer",
+            password="secret",
+        ).id
         session.add(
-            ScanRun(
+            SyncRun(
+                nas_id=nas_id,
+                scope="nas",
+                share_path=None,
                 generation=1,
                 status="running",
                 started_at=datetime.now(UTC),
@@ -21,6 +36,7 @@ def running_scan(client):
             )
         )
         session.commit()
+        return nas_id
 
 
 def test_scan_start_requires_saved_configuration(client):
@@ -37,7 +53,10 @@ def test_scan_status_partial_polls_while_running(
     client,
     running_scan,
 ):
-    response = client.get("/scans/status")
+    response = client.get(
+        "/scans/status",
+        params={"nas_id": running_scan},
+    )
 
     assert response.status_code == 200
     assert 'hx-get="/scans/status"' in response.text

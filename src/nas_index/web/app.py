@@ -14,10 +14,11 @@ from nas_index.db import (
 )
 from nas_index.logging import configure_logging
 from nas_index.qnap.client import QnapClient
-from nas_index.repositories.config import ConfigRepository
-from nas_index.repositories.scans import ScanRepository
-from nas_index.services.scan_manager import ScanManager
+from nas_index.repositories.nas import NasRepository
+from nas_index.repositories.syncs import SyncRepository
+from nas_index.services.access import AccessSessionStore
 from nas_index.services.scanner import Scanner
+from nas_index.services.sync_manager import SyncManager
 from nas_index.web.routes import dashboard
 from nas_index.web.routes import browse as browse_routes
 from nas_index.web.routes import scans as scan_routes
@@ -35,7 +36,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
         with session_factory() as session:
-            ScanRepository(
+            SyncRepository(
                 session
             ).interrupt_running()
             session.commit()
@@ -46,22 +47,26 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.engine = engine
     app.state.session_factory = session_factory
+    app.state.access_store = AccessSessionStore(
+        ttl_seconds=settings.user_access_ttl_seconds
+    )
     web_dir = Path(__file__).parent
     app.state.templates = Jinja2Templates(
         directory=web_dir / "templates"
     )
 
-    def scanner_factory() -> Scanner:
+    def scanner_factory(nas_id: int) -> Scanner:
         with Session(engine) as session:
-            connection = ConfigRepository(
+            connection = NasRepository(
                 session
-            ).get()
+            ).connection_for_indexer(nas_id)
         if connection is None:
             raise RuntimeError(
                 "NAS configuration is missing"
             )
         return Scanner(
             engine=engine,
+            nas_id=nas_id,
             client_factory=lambda: QnapClient(
                 connection,
                 timeout_seconds=(
@@ -80,7 +85,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
             skip_recycle=settings.scan_skip_recycle,
         )
 
-    app.state.scan_manager = ScanManager(
+    app.state.sync_manager = SyncManager(
         scanner_factory
     )
     app.mount(
