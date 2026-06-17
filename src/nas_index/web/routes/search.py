@@ -2,7 +2,6 @@ import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
-from math import ceil
 from pathlib import PurePosixPath
 from typing import Callable
 
@@ -403,7 +402,6 @@ def _summary_context(
 def search(
     request: Request,
     q: str = Query(""),
-    page: int = Query(1, ge=1),
     selected: int | None = Query(None),
     session: Session = Depends(get_session),
 ):
@@ -416,36 +414,17 @@ def search(
 
     query = q.strip()
     repository = EntryRepository(session)
-    results = repository.search(
+    results = repository.search_all(
         query,
         nas_id=access.nas_id,
         allowed_share_paths=access.share_paths,
-        page=page,
-        page_size=50,
     )
     result_start = (
-        ((results.page - 1) * results.page_size) + 1
-        if results.total
-        else 0
+        1 if results.total else 0
     )
-    result_end = min(
-        results.total,
-        results.page * results.page_size,
-    )
+    result_end = results.total
     total_pages = (
-        ceil(results.total / results.page_size)
-        if results.total
-        else 0
-    )
-    previous_page = (
-        results.page - 1
-        if results.page > 1
-        else None
-    )
-    next_page = (
-        results.page + 1
-        if result_end < results.total
-        else None
+        1 if results.total else 0
     )
     selected_result = _select_result(
         results.items,
@@ -520,8 +499,6 @@ def search(
             "result_start": result_start,
             "result_end": result_end,
             "total_pages": total_pages,
-            "previous_page": previous_page,
-            "next_page": next_page,
             "summary_payload": summary_payload,
             "breadcrumb_parts": _breadcrumb_parts,
             "highlight_match": _build_highlighter(

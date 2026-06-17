@@ -235,10 +235,14 @@ class OpenAIChatSearchSummarizer:
 
 
 def _format_prompt(context: SearchSummaryContext) -> str:
+    provided_count = sum(
+        len(directory.items)
+        for directory in context.directories
+    )
     lines = [
         f"搜索词：{context.query}",
         f"结果总数：{context.total}",
-        f"当前页：第 {context.page} 页，每页 {context.page_size} 条",
+        f"本次提供给你的结果数：{provided_count}",
         "",
         "请输出：",
         "1. 结果主要集中在哪些主题或目录。",
@@ -249,7 +253,7 @@ def _format_prompt(context: SearchSummaryContext) -> str:
     ]
     for directory in context.directories:
         lines.append(
-            f"- 目录：{directory.path}，当前页命中 {directory.item_count} 条"
+            f"- 目录：{directory.path}，命中 {directory.item_count} 条"
         )
         for item in directory.items:
             item_type = (

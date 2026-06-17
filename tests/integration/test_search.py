@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from nas_index.repositories.entries import EntryRepository
+from nas_index.services.search_summary import load_search_summary_payload
 from nas_index.types import IndexedItem
 
 
@@ -167,6 +168,86 @@ def test_search_page_returns_name_and_full_path(
     assert set(summary_payload) == {"payload", "signature"}
     assert summary_payload["payload"]
     assert summary_payload["signature"]
+
+
+def test_search_page_includes_all_results_and_summary_payload(
+    client,
+    web_seeded_entries,
+):
+    with Session(client.app.state.engine) as session:
+        items = [
+            IndexedItem(
+                "素材A",
+                "/Public/素材A",
+                "/Public",
+                "directory",
+                None,
+                None,
+                share_path="/Public",
+            ),
+            IndexedItem(
+                "素材B",
+                "/Public/素材B",
+                "/Public",
+                "directory",
+                None,
+                None,
+                share_path="/Public",
+            ),
+        ]
+        for index in range(55):
+            parent = (
+                "/Public/素材A"
+                if index < 30
+                else "/Public/素材B"
+            )
+            items.append(
+                IndexedItem(
+                    f"葡萄素材-{index:02d}.png",
+                    f"{parent}/葡萄素材-{index:02d}.png",
+                    parent,
+                    "file",
+                    1024,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                )
+            )
+        EntryRepository(session).upsert_batch(
+            items,
+            generation=1,
+        )
+        session.commit()
+
+    response = client.get(
+        "/search",
+        params={"q": "葡萄"},
+    )
+    text = _plain_text(response.text)
+
+    assert response.status_code == 200
+    assert "共 55 条结果，分布在 2 个目录" in text
+    assert "素材A" in text
+    assert "素材B" in text
+    assert "葡萄素材-00.png" in text
+    assert "葡萄素材-54.png" in text
+    assert "下一页" not in text
+
+    signed_payload = _summary_payload(response.text)
+    _, context = load_search_summary_payload(
+        signed_payload["payload"],
+        signed_payload["signature"],
+        secret=client.app.state.search_summary_payload_secret,
+    )
+    assert context.query == "葡萄"
+    assert context.total == 55
+    assert sum(
+        len(directory.items)
+        for directory in context.directories
+    ) == 55
+    assert {
+        directory.path
+        for directory in context.directories
+    } == {"/Public/素材A", "/Public/素材B"}
 
 
 def test_search_summary_requires_access_session(client):

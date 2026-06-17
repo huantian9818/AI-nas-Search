@@ -510,3 +510,105 @@ class EntryRepository:
             page,
             page_size,
         )
+
+    def search_all(
+        self,
+        query: str,
+        *,
+        nas_id: int = DEFAULT_NAS_ID,
+        allowed_share_paths: tuple[str, ...] | None = None,
+    ) -> Page[Entry]:
+        query = query.strip()
+        if not query:
+            return Page([], 0, 1, 0)
+        if allowed_share_paths is not None and not allowed_share_paths:
+            return Page([], 0, 1, 0)
+
+        if len(query) < 3:
+            escaped = (
+                query.replace("\\", "\\\\")
+                .replace("%", "\\%")
+                .replace("_", "\\_")
+            )
+            predicate = [
+                Entry.nas_id == nas_id,
+                Entry.name.ilike(
+                    f"%{escaped}%",
+                    escape="\\",
+                ),
+            ]
+            if allowed_share_paths is not None:
+                predicate.append(
+                    Entry.share_path.in_(allowed_share_paths)
+                )
+            rows = list(
+                self.session.scalars(
+                    select(Entry)
+                    .where(*predicate)
+                    .order_by(
+                        case(
+                            (
+                                Entry.entry_type
+                                == "directory",
+                                0,
+                            ),
+                            else_=1,
+                        ),
+                        func.lower(Entry.name),
+                        Entry.id,
+                    )
+                )
+            )
+            return Page(
+                rows,
+                len(rows),
+                1,
+                len(rows),
+            )
+
+        match_query = (
+            '"'
+            + query.replace('"', '""')
+            + '"'
+        )
+        rows_sql = text(
+            """
+            SELECT e.*
+            FROM entry_search
+            CROSS JOIN entries AS e ON e.id = entry_search.rowid
+            WHERE entry_search MATCH :query
+              AND e.nas_id = :nas_id
+              AND (
+                :filter_shares = 0
+                OR e.share_path IN :share_paths
+              )
+            ORDER BY bm25(entry_search),
+                     CASE
+                       WHEN e.entry_type = 'directory'
+                       THEN 0 ELSE 1
+                     END,
+                     lower(e.name),
+                     e.id
+            """
+        ).bindparams(bindparam("share_paths", expanding=True))
+        share_paths = list(allowed_share_paths or ("/",))
+        params = {
+            "query": match_query,
+            "nas_id": nas_id,
+            "filter_shares": 1
+            if allowed_share_paths is not None
+            else 0,
+            "share_paths": share_paths,
+        }
+        rows = list(
+            self.session.scalars(
+                select(Entry).from_statement(rows_sql),
+                params,
+            )
+        )
+        return Page(
+            rows,
+            len(rows),
+            1,
+            len(rows),
+        )

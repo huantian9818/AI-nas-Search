@@ -116,18 +116,6 @@
             </section>
           {% endfor %}
 
-          <nav class="pagination">
-            {% if previous_page %}
-              <a href="/search?q={{ query | urlencode }}&amp;page={{ previous_page }}">
-                上一页
-              </a>
-            {% endif %}
-            {% if next_page %}
-              <a href="/search?q={{ query | urlencode }}&amp;page={{ next_page }}">
-                下一页
-              </a>
-            {% endif %}
-          </nav>
         </section>
       </div>
     {% endif %}
