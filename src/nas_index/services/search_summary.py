@@ -3,6 +3,8 @@ import binascii
 import hashlib
 import hmac
 import json
+import re
+from collections import Counter, defaultdict
 from dataclasses import asdict, dataclass
 
 import httpx
@@ -205,8 +207,11 @@ class OpenAIChatSearchSummarizer:
                             {
                                 "role": "system",
                                 "content": (
-                                    "你是 NAS 文件搜索结果助手。只根据用户可见的目录名"
-                                    "和文件名做概览，不要猜测文件内容，不要要求读取文件。"
+                                    "你是 NAS 文件检索助手。你只根据用户可见的路径、"
+                                    "目录名和文件名做分析，不能推测文件内容或读取文件。"
+                                    "你的目标是帮助用户决定先点哪些命中目录。"
+                                    "回答必须简洁、带证据，证据只能引用下面提供的"
+                                    "目录或文件名。"
                                 ),
                             },
                             {
@@ -243,14 +248,37 @@ def _format_prompt(context: SearchSummaryContext) -> str:
         f"搜索词：{context.query}",
         f"结果总数：{context.total}",
         f"本次提供给你的结果数：{provided_count}",
+        f"命中目录数：{len(context.directories)}",
         "",
-        "请输出：",
-        "1. 结果主要集中在哪些主题或目录。",
-        "2. 建议优先查看哪些目录。",
-        "3. 是否有相似或重复的分类线索。",
-        "",
-        "当前用户可见的命中目录和文件名：",
+        "搜索结果地图：",
+        "一级目录命中排行：",
     ]
+    lines.extend(_format_ranked_counts(_path_counts(context, 1)))
+    lines.append("二级目录命中排行：")
+    lines.extend(_format_ranked_counts(_path_counts(context, 2)))
+    lines.append("文件类型统计：")
+    lines.extend(_format_ranked_counts(_file_type_counts(context)))
+    lines.append("重复和版本线索：")
+    lines.extend(_format_version_groups(context))
+    lines.extend(
+        [
+            "",
+            "请按以下格式输出：",
+            "1. 总体判断：用 2-3 句话说明这批结果大概是什么。",
+            "2. 主要命中方向：按主题归类，并引用目录或文件名证据。",
+            "3. 优先查看目录：列 3-8 个目录，每个说明为什么值得先点。",
+            "4. 重复和版本线索：指出同名、相似名、分辨率、转曲、源文件等线索。",
+            "5. 建议下一步：给出可继续搜索的关键词或下一步查看建议。",
+            "",
+            "约束：",
+            "- 不要猜测文件内容，只能根据路径、目录名、文件名判断。",
+            "- 不要要求读取文件或访问 NAS。",
+            "- 如果证据不足，直接说证据不足。",
+            "- 每个重要判断都要引用至少一个目录或文件名作为依据。",
+            "",
+            "完整命中目录和文件名：",
+        ]
+    )
     for directory in context.directories:
         lines.append(
             f"- 目录：{directory.path}，命中 {directory.item_count} 条"
@@ -265,3 +293,143 @@ def _format_prompt(context: SearchSummaryContext) -> str:
                 f"  - {item_type}: {item.name} ({item.full_path})"
             )
     return "\n".join(lines)
+
+
+def _path_counts(
+    context: SearchSummaryContext,
+    depth: int,
+) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for directory in context.directories:
+        counts[_path_prefix(directory.path, depth)] += (
+            directory.item_count
+        )
+    return counts
+
+
+def _path_prefix(
+    path: str,
+    depth: int,
+) -> str:
+    parts = [
+        part
+        for part in path.split("/")
+        if part
+    ]
+    if not parts:
+        return "/"
+    return "/" + "/".join(parts[:depth])
+
+
+def _file_type_counts(
+    context: SearchSummaryContext,
+) -> Counter[str]:
+    counts: Counter[str] = Counter()
+    for directory in context.directories:
+        for item in directory.items:
+            counts[_file_type_label(item)] += 1
+    return counts
+
+
+def _file_type_label(item: SearchSummaryItem) -> str:
+    if item.entry_type == "directory":
+        return "文件夹"
+    name = item.name.rsplit("/", 1)[-1]
+    if "." not in name:
+        return "无扩展名"
+    extension = name.rsplit(".", 1)[-1].strip().lower()
+    if not extension:
+        return "无扩展名"
+    return f".{extension}"
+
+
+def _format_ranked_counts(
+    counts: Counter[str],
+    *,
+    limit: int = 10,
+) -> list[str]:
+    if not counts:
+        return ["- 无"]
+    return [
+        f"- {label}: {count}"
+        for label, count in counts.most_common(limit)
+    ]
+
+
+def _format_version_groups(
+    context: SearchSummaryContext,
+    *,
+    limit: int = 8,
+) -> list[str]:
+    groups: dict[str, list[str]] = defaultdict(list)
+    display_keys: dict[str, str] = {}
+    for directory in context.directories:
+        for item in directory.items:
+            if item.entry_type != "file":
+                continue
+            key, display_key = _version_key(item.name)
+            if len(key) < 2:
+                continue
+            groups[key].append(item.name)
+            display_keys.setdefault(key, display_key)
+
+    repeated = [
+        (
+            display_keys[key],
+            sorted(set(names)),
+        )
+        for key, names in groups.items()
+        if len(set(names)) > 1
+    ]
+    repeated.sort(
+        key=lambda group: (
+            -len(group[1]),
+            group[0],
+        )
+    )
+    if not repeated:
+        return ["- 未发现明显重复或版本线索"]
+    lines = []
+    for key, names in repeated[:limit]:
+        lines.append(
+            f"- {key}: "
+            + "；".join(names[:6])
+        )
+    return lines
+
+
+def _version_key(name: str) -> tuple[str, str]:
+    stem = name.rsplit(".", 1)[0]
+    display_key = _strip_version_markers(stem)
+    key = re.sub(
+        r"\s+",
+        "",
+        display_key,
+    ).lower()
+    return key, display_key
+
+
+def _strip_version_markers(stem: str) -> str:
+    value = re.sub(
+        r"@\d+(?:\.\d+)?x$",
+        "",
+        stem,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"[-_ ]?转曲$",
+        "",
+        value,
+    )
+    value = re.sub(
+        r"[-_ ]?copy(?:\s*\d+)?$",
+        "",
+        value,
+        flags=re.IGNORECASE,
+    )
+    value = re.sub(
+        r"[-_ ]?副本(?:\s*\d+)?$",
+        "",
+        value,
+    )
+    return value.strip() or stem
