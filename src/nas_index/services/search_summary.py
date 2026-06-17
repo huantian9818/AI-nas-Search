@@ -51,7 +51,8 @@ class OpenAIChatSearchSummarizer:
 
         try:
             async with httpx.AsyncClient(
-                timeout=self.timeout_seconds
+                timeout=self.timeout_seconds,
+                trust_env=False,
             ) as client:
                 response = await client.post(
                     f"{self.base_url}/chat/completions",
