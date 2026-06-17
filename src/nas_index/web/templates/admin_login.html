@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}管理员登录 - QNAP 文件索引{% endblock %}
+{% block content %}
+<div class="page">
+  <section class="section-block">
+    <h1>管理员登录</h1>
+    <p>管理员可以配置 NAS 和触发同步。</p>
+  </section>
+
+  {% if not configured %}
+    <p>未配置管理员密码，请设置 NAS_INDEX_ADMIN_PASSWORD 后重启程序。</p>
+  {% endif %}
+
+  {% if error %}
+    <p>{{ error }}</p>
+  {% endif %}
+
+  <section class="section-block">
+    <form method="post" action="/admin/login" class="stack-form">
+      <input type="hidden" name="next" value="{{ next }}">
+      <label>
+        管理员密码
+        <input name="password"
+               type="password"
+               required
+               autocomplete="current-password">
+      </label>
+      <div class="inline-actions">
+        <button type="submit">登录</button>
+      </div>
+    </form>
+  </section>
+</div>
+{% endblock %}

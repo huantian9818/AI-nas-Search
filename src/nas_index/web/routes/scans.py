@@ -6,6 +6,7 @@ from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
 from nas_index.services.sync_manager import NasSyncAlreadyRunning
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.admin import admin_login_redirect
 
 router = APIRouter(prefix="/scans")
 
@@ -16,6 +17,10 @@ async def start_scan(
     nas_id: int | None = Form(None),
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request, next_path="/")
+    if redirect is not None:
+        return redirect
+
     repository = NasRepository(session)
     if nas_id is None:
         servers = repository.list_servers()

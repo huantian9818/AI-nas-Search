@@ -30,10 +30,12 @@
            href="/access">
           访问
         </a>
-        <a class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}"
-           href="/settings">
-          设置
-        </a>
+        {% if is_admin(request) %}
+          <a class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}"
+             href="/settings">
+            设置
+          </a>
+        {% endif %}
       </nav>
     </header>
     <main class="page-shell">{% block content %}{% endblock %}</main>

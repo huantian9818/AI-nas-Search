@@ -16,9 +16,11 @@ from nas_index.logging import configure_logging
 from nas_index.qnap.client import QnapClient
 from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
+from nas_index.services.admin import AdminSessionStore
 from nas_index.services.access import AccessSessionStore
 from nas_index.services.scanner import Scanner
 from nas_index.services.sync_manager import SyncManager
+from nas_index.web.routes import admin as admin_routes
 from nas_index.web.routes import access as access_routes
 from nas_index.web.routes import dashboard
 from nas_index.web.routes import browse as browse_routes
@@ -55,9 +57,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.access_store = AccessSessionStore(
         ttl_seconds=settings.user_access_ttl_seconds
     )
+    app.state.admin_store = AdminSessionStore(
+        ttl_seconds=settings.admin_session_ttl_seconds
+    )
     web_dir = Path(__file__).parent
     app.state.templates = Jinja2Templates(
         directory=web_dir / "templates"
+    )
+    app.state.templates.env.globals["is_admin"] = (
+        admin_routes.current_admin
     )
 
     def scanner_factory(nas_id: int) -> Scanner:
@@ -104,6 +112,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         name="static",
     )
     app.include_router(dashboard.router)
+    app.include_router(admin_routes.router)
     app.include_router(access_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(browse_routes.router)

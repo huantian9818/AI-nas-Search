@@ -31,13 +31,13 @@ def test_dashboard_displays_counts(
     assert "文件夹" in response.text
 
 
-def test_dashboard_displays_per_nas_scan_controls(client):
-    with Session(client.app.state.engine) as session:
+def test_dashboard_displays_per_nas_scan_controls(admin_client):
+    with Session(admin_client.app.state.engine) as session:
         office_id = _create_nas(session, "Office")
         lab_id = _create_nas(session, "Lab")
         session.commit()
 
-    response = client.get("/")
+    response = admin_client.get("/")
 
     assert response.status_code == 200
     assert f'name="nas_id" value="{office_id}"' in response.text

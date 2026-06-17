@@ -18,6 +18,7 @@ def settings(tmp_path: Path) -> AppSettings:
     return AppSettings(
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         log_dir=tmp_path / "logs",
+        admin_password="admin-secret",
     )
 
 
@@ -25,6 +26,17 @@ def settings(tmp_path: Path) -> AppSettings:
 def client(settings: AppSettings):
     with TestClient(create_app(settings)) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def admin_client(client):
+    response = client.post(
+        "/admin/login",
+        data={"password": "admin-secret"},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    return client
 
 
 @pytest.fixture

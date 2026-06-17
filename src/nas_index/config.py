@@ -15,6 +15,8 @@ class AppSettings(BaseSettings):
     qnap_retry_attempts: int = 3
     user_access_ttl_seconds: int = 900
     sync_scheduler_poll_seconds: float = 10.0
+    admin_password: str | None = None
+    admin_session_ttl_seconds: int = 3600
 
     model_config = SettingsConfigDict(
         env_prefix="NAS_INDEX_",

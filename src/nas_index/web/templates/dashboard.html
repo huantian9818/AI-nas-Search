@@ -12,28 +12,30 @@
     </p>
   </section>
 
-  <section class="section-block">
-    <h2>NAS 同步</h2>
-    {% if servers %}
-      {% for server in servers %}
-        {% set server_scan = syncs_by_nas.get(server.id) %}
-        <div class="section-block">
-          <p>{{ server.name }}：{{ server.base_url }}:{{ server.port }}</p>
-          <form method="post" action="/scans" class="inline-actions">
-            <input type="hidden" name="nas_id" value="{{ server.id }}">
-            <button type="submit">同步 {{ server.name }}</button>
-          </form>
-          <div id="scan-status-{{ server.id }}"
-               hx-get="/scans/status?nas_id={{ server.id }}"
-               hx-trigger="load"
-               hx-swap="innerHTML">
-            {% if server_scan %}{{ server_scan.status }}{% else %}尚未同步{% endif %}
+  {% if is_admin(request) %}
+    <section class="section-block">
+      <h2>NAS 同步</h2>
+      {% if servers %}
+        {% for server in servers %}
+          {% set server_scan = syncs_by_nas.get(server.id) %}
+          <div class="section-block">
+            <p>{{ server.name }}：{{ server.base_url }}:{{ server.port }}</p>
+            <form method="post" action="/scans" class="inline-actions">
+              <input type="hidden" name="nas_id" value="{{ server.id }}">
+              <button type="submit">同步 {{ server.name }}</button>
+            </form>
+            <div id="scan-status-{{ server.id }}"
+                 hx-get="/scans/status?nas_id={{ server.id }}"
+                 hx-trigger="load"
+                 hx-swap="innerHTML">
+              {% if server_scan %}{{ server_scan.status }}{% else %}尚未同步{% endif %}
+            </div>
           </div>
-        </div>
-      {% endfor %}
-    {% else %}
-      <p>请先在设置中新增 NAS。</p>
-    {% endif %}
-  </section>
+        {% endfor %}
+      {% else %}
+        <p>请先在设置中新增 NAS。</p>
+      {% endif %}
+    </section>
+  {% endif %}
 </div>
 {% endblock %}

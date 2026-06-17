@@ -39,8 +39,8 @@ def running_scan(client):
         return nas_id
 
 
-def test_scan_start_requires_saved_configuration(client):
-    response = client.post(
+def test_scan_start_requires_saved_configuration(admin_client):
+    response = admin_client.post(
         "/scans",
         follow_redirects=False,
     )

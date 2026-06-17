@@ -10,6 +10,7 @@ from nas_index.repositories.config import ConfigRepository
 from nas_index.repositories.nas import NasRepository
 from nas_index.types import NasConnection
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.admin import admin_login_redirect
 
 router = APIRouter()
 
@@ -64,6 +65,10 @@ def settings_page(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request)
+    if redirect is not None:
+        return redirect
+
     repository = NasRepository(session)
     return request.app.state.templates.TemplateResponse(
         request=request,
@@ -86,6 +91,10 @@ def create_nas(
     password: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request, next_path="/settings")
+    if redirect is not None:
+        return redirect
+
     repository = NasRepository(session)
     try:
         repository.create_server(
@@ -136,6 +145,10 @@ def update_nas(
     password: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request, next_path="/settings")
+    if redirect is not None:
+        return redirect
+
     repository = NasRepository(session)
     try:
         repository.update_server(
@@ -182,6 +195,10 @@ def save_settings(
     password: str = Form(""),
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request, next_path="/settings")
+    if redirect is not None:
+        return redirect
+
     repository = ConfigRepository(session)
     try:
         repository.save(
@@ -221,6 +238,10 @@ async def connection_test(
     request: Request,
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request, next_path="/settings")
+    if redirect is not None:
+        return redirect
+
     config = ConfigRepository(session).get()
     if config is None:
         context = {
@@ -265,6 +286,10 @@ async def nas_connection_test(
     nas_id: int,
     session: Session = Depends(get_session),
 ):
+    redirect = admin_login_redirect(request, next_path="/settings")
+    if redirect is not None:
+        return redirect
+
     config = NasRepository(session).connection_for_indexer(
         nas_id
     )

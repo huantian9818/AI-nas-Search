@@ -28,11 +28,11 @@ def _create_nas(client, name: str = "Office") -> int:
         return server.id
 
 
-def test_settings_can_create_multiple_nas_servers(client):
-    _create_nas(client, "Office")
-    _create_nas(client, "Lab")
+def test_settings_can_create_multiple_nas_servers(admin_client):
+    _create_nas(admin_client, "Office")
+    _create_nas(admin_client, "Lab")
 
-    with Session(client.app.state.engine) as session:
+    with Session(admin_client.app.state.engine) as session:
         names = [
             server.name
             for server in NasRepository(session).list_servers()
@@ -41,10 +41,10 @@ def test_settings_can_create_multiple_nas_servers(client):
     assert names == ["Lab", "Office"]
 
 
-def test_settings_can_update_nas_and_preserve_blank_password(client):
-    nas_id = _create_nas(client)
+def test_settings_can_update_nas_and_preserve_blank_password(admin_client):
+    nas_id = _create_nas(admin_client)
 
-    response = client.post(
+    response = admin_client.post(
         f"/settings/nas/{nas_id}",
         data={
             "name": "Office Updated",
@@ -61,7 +61,7 @@ def test_settings_can_update_nas_and_preserve_blank_password(client):
     )
 
     assert response.status_code == 303
-    with Session(client.app.state.engine) as session:
+    with Session(admin_client.app.state.engine) as session:
         repository = NasRepository(session)
         server = repository.get_server(nas_id)
         credential = repository.get_credential(nas_id)
@@ -73,16 +73,16 @@ def test_settings_can_update_nas_and_preserve_blank_password(client):
     assert credential.username == "indexer2"
     assert credential.password == "secret"
 
-    page = client.get("/settings")
+    page = admin_client.get("/settings")
     assert "secret" not in page.text
     assert "留空保留原密码" in page.text
 
 
 def test_connection_test_returns_sanitized_error(
-    client,
+    admin_client,
     monkeypatch,
 ):
-    nas_id = _create_nas(client)
+    nas_id = _create_nas(admin_client)
 
     async def fail(_connection):
         raise RuntimeError("secret-token")
@@ -91,15 +91,15 @@ def test_connection_test_returns_sanitized_error(
         "nas_index.web.routes.settings.test_connection",
         fail,
     )
-    response = client.post(f"/settings/nas/{nas_id}/test")
+    response = admin_client.post(f"/settings/nas/{nas_id}/test")
 
     assert response.status_code == 200
     assert "连接测试失败" in response.text
     assert "secret-token" not in response.text
 
 
-def test_first_save_requires_password(client):
-    response = client.post(
+def test_first_save_requires_password(admin_client):
+    response = admin_client.post(
         "/settings/nas",
         data={
             "name": "Office",
