@@ -449,7 +449,7 @@ class EntryRepository:
             """
             SELECT count(*)
             FROM entry_search
-            JOIN entries AS e ON e.id = entry_search.rowid
+            CROSS JOIN entries AS e ON e.id = entry_search.rowid
             WHERE entry_search MATCH :query
               AND e.nas_id = :nas_id
               AND (
@@ -461,8 +461,8 @@ class EntryRepository:
         rows_sql = text(
             """
             SELECT e.*
-            FROM entry_search AS search_index
-            JOIN entries AS e ON e.id = search_index.rowid
+            FROM entry_search
+            CROSS JOIN entries AS e ON e.id = entry_search.rowid
             WHERE entry_search MATCH :query
               AND e.nas_id = :nas_id
               AND (
