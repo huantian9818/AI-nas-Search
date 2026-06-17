@@ -41,6 +41,7 @@ class OpenAIChatSearchSummarizer:
         self.base_url = settings.ai_base_url.rstrip("/")
         self.model = settings.ai_model
         self.timeout_seconds = settings.ai_timeout_seconds
+        self.max_tokens = settings.ai_max_tokens
 
     async def summarize(
         self,
@@ -76,6 +77,8 @@ class OpenAIChatSearchSummarizer:
                             },
                         ],
                         "temperature": 0.2,
+                        "max_tokens": self.max_tokens,
+                        "enable_thinking": False,
                     },
                 )
                 response.raise_for_status()

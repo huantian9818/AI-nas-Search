@@ -7,7 +7,8 @@ from nas_index.services.search_summary import SearchSummaryContext
 async def test_openai_chat_summarizer_ignores_environment_proxy(
     monkeypatch,
 ):
-    calls = []
+    client_calls = []
+    post_calls = []
 
     class FakeResponse:
         def raise_for_status(self):
@@ -26,7 +27,7 @@ async def test_openai_chat_summarizer_ignores_environment_proxy(
 
     class FakeAsyncClient:
         def __init__(self, **kwargs):
-            calls.append(kwargs)
+            client_calls.append(kwargs)
 
         async def __aenter__(self):
             return self
@@ -35,6 +36,12 @@ async def test_openai_chat_summarizer_ignores_environment_proxy(
             return None
 
         async def post(self, *args, **kwargs):
+            post_calls.append(
+                {
+                    "args": args,
+                    "kwargs": kwargs,
+                }
+            )
             return FakeResponse()
 
     monkeypatch.setattr(
@@ -43,7 +50,10 @@ async def test_openai_chat_summarizer_ignores_environment_proxy(
         FakeAsyncClient,
     )
     summarizer = OpenAIChatSearchSummarizer(
-        AppSettings(ai_api_key="sk-test")
+        AppSettings(
+            ai_api_key="sk-test",
+            ai_max_tokens=650,
+        )
     )
 
     summary = await summarizer.summarize(
@@ -57,4 +67,7 @@ async def test_openai_chat_summarizer_ignores_environment_proxy(
     )
 
     assert summary == "摘要"
-    assert calls[0]["trust_env"] is False
+    assert client_calls[0]["trust_env"] is False
+    request_json = post_calls[0]["kwargs"]["json"]
+    assert request_json["enable_thinking"] is False
+    assert request_json["max_tokens"] == 650

@@ -13,6 +13,7 @@ api_key = "sk-file"
 base_url = "https://api.openai.com/v1"
 model = "deepseek-v4"
 timeout_seconds = 45
+max_tokens = 650
 """,
         encoding="utf-8",
     )
@@ -21,6 +22,7 @@ timeout_seconds = 45
     monkeypatch.delenv("NAS_INDEX_AI_BASE_URL", raising=False)
     monkeypatch.delenv("NAS_INDEX_AI_MODEL", raising=False)
     monkeypatch.delenv("NAS_INDEX_AI_TIMEOUT_SECONDS", raising=False)
+    monkeypatch.delenv("NAS_INDEX_AI_MAX_TOKENS", raising=False)
 
     settings = load_settings(config_path)
 
@@ -29,6 +31,7 @@ timeout_seconds = 45
     assert settings.ai_base_url == "https://api.openai.com/v1"
     assert settings.ai_model == "deepseek-v4"
     assert settings.ai_timeout_seconds == 45
+    assert settings.ai_max_tokens == 650
 
 
 def test_load_settings_allows_env_to_override_toml_config(

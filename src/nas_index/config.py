@@ -24,6 +24,7 @@ class AppSettings(BaseSettings):
     ai_base_url: str = "https://api.openai.com/v1"
     ai_model: str = "deepseek-v4"
     ai_timeout_seconds: float = 30.0
+    ai_max_tokens: int = 700
 
     model_config = SettingsConfigDict(
         env_prefix="NAS_INDEX_",
@@ -53,6 +54,7 @@ AI_CONFIG_FIELDS = {
     "base_url": "ai_base_url",
     "model": "ai_model",
     "timeout_seconds": "ai_timeout_seconds",
+    "max_tokens": "ai_max_tokens",
 }
 
 
