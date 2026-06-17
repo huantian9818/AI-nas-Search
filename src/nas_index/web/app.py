@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
+from secrets import token_bytes
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -62,6 +63,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ttl_seconds=settings.admin_session_ttl_seconds
     )
     app.state.search_summarizer = OpenAIChatSearchSummarizer(settings)
+    app.state.search_summary_payload_secret = token_bytes(32)
     web_dir = Path(__file__).parent
     app.state.templates = Jinja2Templates(
         directory=web_dir / "templates"

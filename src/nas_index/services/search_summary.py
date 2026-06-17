@@ -1,4 +1,9 @@
-from dataclasses import dataclass
+import base64
+import binascii
+import hashlib
+import hmac
+import json
+from dataclasses import asdict, dataclass
 
 import httpx
 
@@ -6,6 +11,10 @@ from nas_index.config import AppSettings
 
 
 class SearchSummaryUnavailable(RuntimeError):
+    pass
+
+
+class SearchSummaryPayloadError(ValueError):
     pass
 
 
@@ -30,6 +39,135 @@ class SearchSummaryContext:
     page: int
     page_size: int
     directories: tuple[SearchSummaryDirectory, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class SearchSummaryPayloadAccess:
+    nas_id: int
+    share_paths: tuple[str, ...]
+
+
+def sign_search_summary_payload(
+    context: SearchSummaryContext,
+    *,
+    nas_id: int,
+    share_paths: tuple[str, ...],
+    secret: bytes,
+) -> dict[str, str]:
+    document = {
+        "access": {
+            "nas_id": nas_id,
+            "share_paths": sorted(share_paths),
+        },
+        "context": asdict(context),
+    }
+    payload = base64.urlsafe_b64encode(
+        json.dumps(
+            document,
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+    ).decode("ascii")
+    return {
+        "payload": payload,
+        "signature": _summary_payload_signature(
+            payload,
+            secret,
+        ),
+    }
+
+
+def load_search_summary_payload(
+    payload: str,
+    signature: str,
+    *,
+    secret: bytes,
+) -> tuple[SearchSummaryPayloadAccess, SearchSummaryContext]:
+    try:
+        expected_signature = _summary_payload_signature(
+            payload,
+            secret,
+        )
+    except UnicodeEncodeError as exc:
+        raise SearchSummaryPayloadError(
+            "总结数据已失效，请重新搜索"
+        ) from exc
+
+    if not hmac.compare_digest(
+        signature,
+        expected_signature,
+    ):
+        raise SearchSummaryPayloadError(
+            "总结数据已失效，请重新搜索"
+        )
+
+    try:
+        document = json.loads(
+            base64.urlsafe_b64decode(
+                payload.encode("ascii")
+            ).decode("utf-8")
+        )
+        access_data = document["access"]
+        context_data = document["context"]
+        access = SearchSummaryPayloadAccess(
+            nas_id=int(access_data["nas_id"]),
+            share_paths=tuple(
+                str(path)
+                for path in access_data["share_paths"]
+            ),
+        )
+        context = SearchSummaryContext(
+            query=str(context_data["query"]),
+            total=int(context_data["total"]),
+            page=int(context_data["page"]),
+            page_size=int(context_data["page_size"]),
+            directories=tuple(
+                SearchSummaryDirectory(
+                    path=str(directory["path"]),
+                    item_count=int(
+                        directory["item_count"]
+                    ),
+                    items=tuple(
+                        SearchSummaryItem(
+                            name=str(item["name"]),
+                            full_path=str(
+                                item["full_path"]
+                            ),
+                            entry_type=str(
+                                item["entry_type"]
+                            ),
+                        )
+                        for item in directory["items"]
+                    ),
+                )
+                for directory in context_data[
+                    "directories"
+                ]
+            ),
+        )
+    except (
+        KeyError,
+        TypeError,
+        ValueError,
+        UnicodeDecodeError,
+        binascii.Error,
+    ) as exc:
+        raise SearchSummaryPayloadError(
+            "总结数据已失效，请重新搜索"
+        ) from exc
+    return access, context
+
+
+def _summary_payload_signature(
+    payload: str,
+    secret: bytes,
+) -> str:
+    return hmac.new(
+        secret,
+        payload.encode("ascii"),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 class OpenAIChatSearchSummarizer:

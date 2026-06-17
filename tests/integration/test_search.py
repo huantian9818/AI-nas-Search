@@ -1,3 +1,4 @@
+import json
 import re
 from datetime import UTC, datetime
 
@@ -91,6 +92,18 @@ def _plain_text(html: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _summary_payload(html: str) -> dict[str, str]:
+    match = re.search(
+        r'<script type="application/json" data-summary-payload>\s*'
+        r"(?P<payload>.*?)"
+        r"\s*</script>",
+        html,
+        re.DOTALL,
+    )
+    assert match is not None
+    return json.loads(match.group("payload"))
+
+
 def test_search_form_labels_keyword_input_and_loading_feedback(
     client,
     web_seeded_entries,
@@ -148,13 +161,18 @@ def test_search_page_returns_name_and_full_path(
     assert "总结这些结果" in response.text
     assert 'data-summary-form' in response.text
     assert 'data-summary-output' in response.text
+    assert 'data-summary-payload' in response.text
     assert '"/search/summary"' in response.text
+    summary_payload = _summary_payload(response.text)
+    assert set(summary_payload) == {"payload", "signature"}
+    assert summary_payload["payload"]
+    assert summary_payload["signature"]
 
 
 def test_search_summary_requires_access_session(client):
     response = client.post(
         "/search/summary",
-        json={"q": "项目", "page": 1},
+        json={"payload": "x", "signature": "x"},
     )
 
     assert response.status_code == 401
@@ -216,9 +234,25 @@ def test_search_summary_uses_only_authorized_results(
         raising=False,
     )
 
+    search_response = client.get(
+        "/search",
+        params={"q": "budget"},
+    )
+    assert search_response.status_code == 200
+    summary_payload = _summary_payload(search_response.text)
+
+    def fail_search(*args, **kwargs):
+        raise AssertionError("summary should not re-query search")
+
+    monkeypatch.setattr(
+        EntryRepository,
+        "search",
+        fail_search,
+    )
+
     response = client.post(
         "/search/summary",
-        json={"q": "budget", "page": 1},
+        json=summary_payload,
     )
 
     assert response.status_code == 200
@@ -231,6 +265,53 @@ def test_search_summary_uses_only_authorized_results(
     assert context.directories[0].path == "/Public"
     assert context.directories[0].items[0].name == "public-budget.xlsx"
     assert "finance-budget.xlsx" not in repr(context)
+
+
+def test_search_summary_rejects_tampered_payload(
+    client,
+    search_layout_entries,
+):
+    search_response = client.get(
+        "/search",
+        params={"q": "项目"},
+    )
+    assert search_response.status_code == 200
+    summary_payload = _summary_payload(search_response.text)
+    summary_payload["signature"] = "0" * len(
+        summary_payload["signature"]
+    )
+
+    response = client.post(
+        "/search/summary",
+        json=summary_payload,
+    )
+
+    assert response.status_code == 400
+
+
+def test_search_summary_rejects_payload_from_different_access(
+    client,
+    search_layout_entries,
+):
+    search_response = client.get(
+        "/search",
+        params={"q": "项目"},
+    )
+    assert search_response.status_code == 200
+    summary_payload = _summary_payload(search_response.text)
+    token = client.app.state.access_store.create(
+        nas_id=1,
+        username="bob",
+        share_paths=("/Archive",),
+    )
+    client.cookies.set("nas_access", token)
+
+    response = client.post(
+        "/search/summary",
+        json=summary_payload,
+    )
+
+    assert response.status_code == 403
 
 
 def test_search_result_links_to_parent_and_selected_entry(

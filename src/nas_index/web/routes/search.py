@@ -18,7 +18,10 @@ from nas_index.repositories.entries import Page
 from nas_index.services.search_summary import SearchSummaryContext
 from nas_index.services.search_summary import SearchSummaryDirectory
 from nas_index.services.search_summary import SearchSummaryItem
+from nas_index.services.search_summary import SearchSummaryPayloadError
 from nas_index.services.search_summary import SearchSummaryUnavailable
+from nas_index.services.search_summary import load_search_summary_payload
+from nas_index.services.search_summary import sign_search_summary_payload
 from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
 from nas_index.web.routes.browse import _normalize_path
@@ -54,8 +57,8 @@ class SearchTreeNode:
 
 
 class SearchSummaryRequest(BaseModel):
-    q: str = Field("")
-    page: int = Field(1, ge=1)
+    payload: str = Field(..., min_length=1)
+    signature: str = Field(..., min_length=1)
 
 
 def _build_highlighter(
@@ -468,6 +471,20 @@ def search(
         selected_result,
         access,
     )
+    summary_payload = None
+    if results.total:
+        summary_payload = sign_search_summary_payload(
+            _summary_context(
+                query,
+                results,
+                result_groups,
+            ),
+            nas_id=access.nas_id,
+            share_paths=access.share_paths,
+            secret=(
+                request.app.state.search_summary_payload_secret
+            ),
+        )
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="search.html",
@@ -505,6 +522,7 @@ def search(
             "total_pages": total_pages,
             "previous_page": previous_page,
             "next_page": next_page,
+            "summary_payload": summary_payload,
             "breadcrumb_parts": _breadcrumb_parts,
             "highlight_match": _build_highlighter(
                 query
@@ -519,7 +537,6 @@ def search(
 async def summarize_search_results(
     request: Request,
     payload: SearchSummaryRequest,
-    session: Session = Depends(get_session),
 ) -> dict[str, str]:
     access = current_access(request)
     if access is None:
@@ -528,28 +545,38 @@ async def summarize_search_results(
             detail="请先登录",
         )
 
-    query = payload.q.strip()
-    if not query:
+    try:
+        payload_access, context = load_search_summary_payload(
+            payload.payload,
+            payload.signature,
+            secret=(
+                request.app.state.search_summary_payload_secret
+            ),
+        )
+    except SearchSummaryPayloadError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+    if payload_access.nas_id != access.nas_id or (
+        payload_access.share_paths
+        != tuple(sorted(access.share_paths))
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="当前账号无权使用这份总结数据",
+        )
+
+    if not context.query.strip():
         raise HTTPException(
             status_code=422,
             detail="请输入关键词",
         )
 
-    repository = EntryRepository(session)
-    results = repository.search(
-        query,
-        nas_id=access.nas_id,
-        allowed_share_paths=access.share_paths,
-        page=payload.page,
-        page_size=50,
-    )
-    if not results.items:
+    if not context.directories:
         return {"summary": "当前搜索没有可总结的结果。"}
 
-    result_groups = _group_results(
-        results.items,
-        selected_id=None,
-    )
     summarizer = getattr(
         request.app.state,
         "search_summarizer",
@@ -561,13 +588,7 @@ async def summarize_search_results(
             detail="管理员未配置 AI 总结",
         )
     try:
-        summary = await summarizer.summarize(
-            _summary_context(
-                query,
-                results,
-                result_groups,
-            )
-        )
+        summary = await summarizer.summarize(context)
     except SearchSummaryUnavailable as exc:
         raise HTTPException(
             status_code=503,

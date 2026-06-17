@@ -45,10 +45,12 @@
     <section class="section-block">
       {% if results.total %}
         <p>共 {{ results.total }} 条结果，分布在 {{ result_groups | length }} 个目录。</p>
-        <form class="summary-form"
-              data-summary-form
-              data-query="{{ query }}"
-              data-page="{{ results.page }}">
+        {% if summary_payload %}
+          <script type="application/json" data-summary-payload>
+{{ summary_payload | tojson }}
+          </script>
+        {% endif %}
+        <form class="summary-form" data-summary-form>
           <button type="submit">总结这些结果</button>
           <span class="search-loading"
                 data-summary-loading
@@ -182,15 +184,20 @@
       }
 
       try {
+        const payloadElement = document.querySelector("[data-summary-payload]");
+        const summaryPayload = payloadElement
+          ? JSON.parse(payloadElement.textContent || "{}")
+          : null;
+        if (!summaryPayload) {
+          throw new Error("总结数据已失效，请重新搜索");
+        }
+
         const response = await fetch("/search/summary", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            q: summaryForm.dataset.query || "",
-            page: Number(summaryForm.dataset.page || "1"),
-          }),
+          body: JSON.stringify(summaryPayload),
         });
         const payload = await response.json();
         if (!response.ok) {
