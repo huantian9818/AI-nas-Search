@@ -152,12 +152,16 @@ def test_search_page_returns_name_and_full_path(
     text = _plain_text(response.text)
 
     assert response.status_code == 200
-    assert "年度<mark>项目</mark>计划.docx" in response.text
     assert "命中目录" in text
     assert "共 4 条结果，分布在 3 个目录" in text
     assert "Public" in text
     assert "Archive" in text
     assert "<mark>项目</mark>" in response.text
+    assert "年度项目计划.docx" not in text
+    assert "项目预算.xlsx" not in text
+    assert "项目归档.md" not in text
+    assert "search-result-list" not in response.text
+    assert "browse-main" not in response.text
     assert "/browse?path=%2FPublic%2F%E8%B5%84%E6%96%99" not in response.text
     assert "总结这些结果" in response.text
     assert 'data-summary-form' in response.text
@@ -168,6 +172,19 @@ def test_search_page_returns_name_and_full_path(
     assert set(summary_payload) == {"payload", "signature"}
     assert summary_payload["payload"]
     assert summary_payload["signature"]
+    _, context = load_search_summary_payload(
+        summary_payload["payload"],
+        summary_payload["signature"],
+        secret=client.app.state.search_summary_payload_secret,
+    )
+    payload_names = {
+        item.name
+        for directory in context.directories
+        for item in directory.items
+    }
+    assert "年度项目计划.docx" in payload_names
+    assert "项目预算.xlsx" in payload_names
+    assert "项目归档.md" in payload_names
 
 
 def test_search_page_includes_all_results_and_summary_payload(
@@ -228,8 +245,10 @@ def test_search_page_includes_all_results_and_summary_payload(
     assert "共 55 条结果，分布在 2 个目录" in text
     assert "素材A" in text
     assert "素材B" in text
-    assert "葡萄素材-00.png" in text
-    assert "葡萄素材-54.png" in text
+    assert "葡萄素材-00.png" not in text
+    assert "葡萄素材-54.png" not in text
+    assert "search-result-list" not in response.text
+    assert "browse-main" not in response.text
     assert "下一页" not in text
 
     signed_payload = _summary_payload(response.text)
@@ -240,6 +259,13 @@ def test_search_page_includes_all_results_and_summary_payload(
     )
     assert context.query == "葡萄"
     assert context.total == 55
+    payload_names = {
+        item.name
+        for directory in context.directories
+        for item in directory.items
+    }
+    assert "葡萄素材-00.png" in payload_names
+    assert "葡萄素材-54.png" in payload_names
     assert sum(
         len(directory.items)
         for directory in context.directories
@@ -395,7 +421,7 @@ def test_search_summary_rejects_payload_from_different_access(
     assert response.status_code == 403
 
 
-def test_search_result_links_to_parent_and_selected_entry(
+def test_search_page_links_only_to_matching_directories(
     client,
     search_layout_entries,
 ):
@@ -405,10 +431,10 @@ def test_search_result_links_to_parent_and_selected_entry(
     )
 
     assert "/search?q=%E9%A1%B9%E7%9B%AE&amp;page=1&amp;selected=" not in response.text
-    assert "/browse?path=/Public&amp;selected=" in response.text
+    assert "/browse?path=/Public" in response.text
     assert "/browse?path=/Public/%E9%A1%B9%E7%9B%AE%E8%B5%84%E6%96%99" in response.text
-    assert "/browse?path=/Public/%E9%A1%B9%E7%9B%AE%E8%B5%84%E6%96%99&amp;selected=" in response.text
-    assert "&amp;selected=" in response.text
+    assert "/browse?path=/Archive/2025" in response.text
+    assert "&amp;selected=" not in response.text
 
 
 def test_search_page_shows_empty_state_for_missing_query(

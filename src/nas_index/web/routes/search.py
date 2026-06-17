@@ -1,5 +1,4 @@
 import re
-from collections import defaultdict
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePosixPath
@@ -231,7 +230,6 @@ def _build_search_tree(
     expanded_paths: set[str],
     visible_directory_paths: set[str],
     matched_directory_paths: set[str],
-    result_files_by_parent: dict[str, list[Entry]],
     result_ids: set[int],
     selected_id: int | None,
 ) -> list[SearchTreeNode]:
@@ -259,30 +257,10 @@ def _build_search_tree(
                     matched_directory_paths=(
                         matched_directory_paths
                     ),
-                    result_files_by_parent=(
-                        result_files_by_parent
-                    ),
                     result_ids=result_ids,
                     selected_id=selected_id,
                 )
             )
-            for file_entry in result_files_by_parent.get(
-                entry.full_path,
-                [],
-            ):
-                children.append(
-                    SearchTreeNode(
-                        entry=file_entry,
-                        children=[],
-                        is_current=False,
-                        is_ancestor=False,
-                        is_match=True,
-                        is_selected=(
-                            file_entry.id == selected_id
-                        ),
-                        is_result=True,
-                    )
-                )
 
         is_current = entry.full_path == current_path
         nodes.append(
@@ -316,9 +294,6 @@ def _tree_context(
     expanded_paths: set[str] = set()
     visible_directory_paths: set[str] = set()
     matched_directory_paths: set[str] = set()
-    result_files_by_parent: dict[str, list[Entry]] = (
-        defaultdict(list)
-    )
     result_ids = {item.id for item in items}
 
     for item in items:
@@ -334,9 +309,6 @@ def _tree_context(
             matched_directory_paths.add(
                 item.parent_path
             )
-            result_files_by_parent[
-                item.parent_path
-            ].append(item)
 
     current_path = _focus_directory_path(
         selected_result
@@ -358,7 +330,6 @@ def _tree_context(
         matched_directory_paths=(
             matched_directory_paths
         ),
-        result_files_by_parent=result_files_by_parent,
         result_ids=result_ids,
         selected_id=selected_result.id,
     )

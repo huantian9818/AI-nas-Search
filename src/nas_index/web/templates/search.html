@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "partials/file_icons.html" import file_icon, folder_icon %}
 {% from "partials/search_tree_nodes.html" import render_search_tree with context %}
 {% macro render_breadcrumb(parts, root_label="根目录") -%}
 <span class="search-breadcrumb">
@@ -74,50 +73,10 @@
     </section>
 
     {% if results.total %}
-      <div class="browser-layout">
-        <aside class="section-block browse-sidebar">
-          <p>命中目录</p>
-          {{ render_search_tree(tree_nodes) }}
-        </aside>
-
-        <section class="section-block browse-main">
-          {% for group in result_groups %}
-            <section class="section-block search-group">
-              <div class="search-group-header">
-                <p class="current-path">
-                  目录：
-                  <span class="item-label">
-                    {{ folder_icon() }}
-                    <span>{{ render_breadcrumb(group.breadcrumbs) }}</span>
-                  </span>
-                </p>
-                <p>命中 {{ group.items | length }} 条</p>
-              </div>
-              <ul class="search-result-list">
-                {% for item in group.items %}
-                  {% set is_directory = item.entry_type == "directory" %}
-                  <li class="search-result-item">
-                    <span class="item-label">
-                      {% if is_directory %}
-                        {{ folder_icon() }}
-                        <a href="/browse?path={{ item.full_path | urlencode }}">
-                          {{ highlight_match(item.name) }}
-                        </a>
-                      {% else %}
-                        {{ file_icon() }}
-                        <a href="/browse?path={{ item.parent_path | urlencode }}&amp;selected={{ item.id }}">
-                          {{ highlight_match(item.name) }}
-                        </a>
-                      {% endif %}
-                    </span>
-                  </li>
-                {% endfor %}
-              </ul>
-            </section>
-          {% endfor %}
-
-        </section>
-      </div>
+      <section class="section-block browse-sidebar search-directory-list">
+        <p>命中目录</p>
+        {{ render_search_tree(tree_nodes) }}
+      </section>
     {% endif %}
   {% else %}
     <section class="section-block">

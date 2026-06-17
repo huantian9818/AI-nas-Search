@@ -1,10 +1,25 @@
+import json
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
 from nas_index.repositories.entries import EntryRepository
 from nas_index.repositories.nas import NasRepository
+from nas_index.services.search_summary import load_search_summary_payload
 from nas_index.types import IndexedItem
+
+
+def _summary_payload(html: str) -> dict[str, str]:
+    match = re.search(
+        r'<script type="application/json" data-summary-payload>\s*'
+        r"(?P<payload>.*?)"
+        r"\s*</script>",
+        html,
+        re.DOTALL,
+    )
+    assert match is not None
+    return json.loads(match.group("payload"))
 
 
 def _seed_nas_with_two_shares(client) -> int:
@@ -131,5 +146,18 @@ def test_access_login_filters_browse_and_search_by_allowed_shares(
         params={"q": "budget"},
     )
     assert search_response.status_code == 200
-    assert "public-<mark>budget</mark>.xlsx" in search_response.text
+    assert "public-budget.xlsx" not in search_response.text
     assert "finance-budget.xlsx" not in search_response.text
+    summary_payload = _summary_payload(search_response.text)
+    _, context = load_search_summary_payload(
+        summary_payload["payload"],
+        summary_payload["signature"],
+        secret=client.app.state.search_summary_payload_secret,
+    )
+    payload_names = {
+        item.name
+        for directory in context.directories
+        for item in directory.items
+    }
+    assert "public-budget.xlsx" in payload_names
+    assert "finance-budget.xlsx" not in payload_names
