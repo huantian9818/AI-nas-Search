@@ -73,6 +73,15 @@ def test_browse_redirects_to_access_without_session(client):
     assert response.headers["location"] == "/access"
 
 
+def test_access_page_without_servers_tells_user_to_contact_admin(client):
+    response = client.get("/access")
+
+    assert response.status_code == 200
+    assert "请联系管理员先完成 NAS 配置" in response.text
+    assert "请先在设置中保存 NAS" not in response.text
+    assert 'href="/admin/login"' in response.text
+
+
 def test_access_login_filters_browse_and_search_by_allowed_shares(
     client,
     monkeypatch,
