@@ -114,6 +114,19 @@ def test_search_form_labels_keyword_input_and_loading_feedback(
     assert "搜索中..." in response.text
 
 
+def test_search_form_uses_compact_single_column_layout(
+    client,
+):
+    response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert re.search(
+        r"\.search-form\s*{[^}]*grid-template-columns:\s*minmax\(0,\s*560px\);",
+        response.text,
+    )
+    assert "grid-template-columns: max-content minmax(0, 1fr);" not in response.text
+
+
 def test_search_page_returns_name_and_full_path(
     client,
     search_layout_entries,

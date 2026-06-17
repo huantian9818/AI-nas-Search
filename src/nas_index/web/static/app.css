@@ -142,8 +142,9 @@ p {
 
 .search-form {
   display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 8px 12px;
+  grid-template-columns: minmax(0, 560px);
+  justify-content: start;
+  gap: 8px;
   align-items: start;
 }
 
