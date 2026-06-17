@@ -91,6 +91,29 @@ def _plain_text(html: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def test_search_form_labels_keyword_input_and_loading_feedback(
+    client,
+    web_seeded_entries,
+):
+    response = client.get("/search")
+
+    assert response.status_code == 200
+    assert "<h1>搜索</h1>" not in response.text
+    assert re.search(
+        r'<label[^>]*for="search-query"[^>]*>\s*输入关键词\s*</label>\s*'
+        r'<div class="search-controls">',
+        response.text,
+    )
+    assert re.search(
+        r'<input[^>]*id="search-query"[\s\S]*?>\s*'
+        r'<div class="search-actions">\s*<button type="submit">搜索</button>',
+        response.text,
+    )
+    assert 'data-search-form' in response.text
+    assert 'data-search-loading' in response.text
+    assert "搜索中..." in response.text
+
+
 def test_search_page_returns_name_and_full_path(
     client,
     search_layout_entries,

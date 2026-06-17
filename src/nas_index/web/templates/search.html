@@ -19,13 +19,25 @@
 {% block content %}
 <div class="page compact-page">
   <section class="section-block">
-    <h1>搜索</h1>
-    <form method="get" action="/search" class="search-form">
-      <input name="q"
-             value="{{ query }}"
-             placeholder="文件名或文件夹名"
-             aria-label="搜索文件名或目录名">
-      <button type="submit">搜索</button>
+    <form method="get" action="/search" class="search-form" data-search-form>
+      <label for="search-query" class="search-label">输入关键词</label>
+      <div class="search-controls">
+        <input id="search-query"
+               name="q"
+               value="{{ query }}"
+               placeholder="文件名或文件夹名"
+               aria-label="输入关键词">
+        <div class="search-actions">
+          <button type="submit">搜索</button>
+          <span class="search-loading"
+                data-search-loading
+                role="status"
+                aria-live="polite"
+                hidden>
+            搜索中...
+          </span>
+        </div>
+      </div>
     </form>
   </section>
 
@@ -106,4 +118,25 @@
     </section>
   {% endif %}
 </div>
+<script>
+  (() => {
+    const form = document.querySelector("[data-search-form]");
+    if (!form) {
+      return;
+    }
+
+    form.addEventListener("submit", () => {
+      const loading = form.querySelector("[data-search-loading]");
+      const button = form.querySelector('button[type="submit"]');
+
+      if (loading) {
+        loading.hidden = false;
+      }
+
+      if (button) {
+        button.disabled = true;
+      }
+    });
+  })();
+</script>
 {% endblock %}

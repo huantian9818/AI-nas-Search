@@ -142,13 +142,43 @@ p {
 
 .search-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
 }
 
 .compact-page .search-form {
   gap: 8px;
+}
+
+.search-label {
+  display: block;
+  padding-top: 4px;
+  white-space: nowrap;
+}
+
+.search-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.search-controls input {
+  max-width: 560px;
+}
+
+.search-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 1.6em;
+}
+
+.search-loading {
+  color: #444;
+}
+
+.search-loading[hidden] {
+  display: none;
 }
 
 .browser-layout {
