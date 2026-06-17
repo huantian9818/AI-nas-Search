@@ -6,7 +6,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from nas_index.config import AppSettings
+from nas_index.config import AppSettings, load_settings
 from nas_index.db import (
     create_database_engine,
     create_session_factory,
@@ -30,7 +30,7 @@ from nas_index.web.routes import settings as settings_routes
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
-    settings = settings or AppSettings()
+    settings = settings or load_settings()
     engine = create_database_engine(settings.database_url)
     init_database(engine)
     session_factory = create_session_factory(engine)
