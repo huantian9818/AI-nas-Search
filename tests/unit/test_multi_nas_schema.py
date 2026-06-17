@@ -23,8 +23,16 @@ def test_init_database_creates_multi_nas_tables(tmp_path):
             column["name"]
             for column in inspector.get_columns("entries")
         }
+        entry_indexes = {
+            index["name"]
+            for index in inspector.get_indexes("entries")
+        }
         assert "nas_id" in entry_columns
         assert "share_path" in entry_columns
+        assert "ix_entries_nas_share" in entry_indexes
+        assert "ix_entries_nas_parent_path" in entry_indexes
+        assert "ix_entries_nas_entry_type" in entry_indexes
+        assert "ix_entries_nas_generation" in entry_indexes
     finally:
         engine.dispose()
 
@@ -105,6 +113,7 @@ def test_init_database_migrates_single_nas_config_and_entries(
         init_database(engine)
 
         with engine.connect() as connection:
+            inspector = inspect(connection)
             server = connection.execute(
                 text(
                     """
@@ -130,6 +139,10 @@ def test_init_database_migrates_single_nas_config_and_entries(
                     """
                 )
             ).mappings().one()
+            entry_indexes = {
+                index["name"]
+                for index in inspector.get_indexes("entries")
+            }
 
         assert server["name"] == "nas.local"
         assert server["base_url"] == "http://nas.local"
@@ -139,5 +152,9 @@ def test_init_database_migrates_single_nas_config_and_entries(
         assert credential["password"] == "secret"
         assert entry["nas_id"] == server["id"]
         assert entry["share_path"] == "/Public"
+        assert "ix_entries_nas_share" in entry_indexes
+        assert "ix_entries_nas_parent_path" in entry_indexes
+        assert "ix_entries_nas_entry_type" in entry_indexes
+        assert "ix_entries_nas_generation" in entry_indexes
     finally:
         engine.dispose()

@@ -116,6 +116,30 @@ def _migrate_entries_table(engine: Engine) -> None:
             ON entries (nas_id, full_path)
             """
         )
+        connection.exec_driver_sql(
+            """
+            CREATE INDEX IF NOT EXISTS ix_entries_nas_share
+            ON entries (nas_id, share_path)
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE INDEX IF NOT EXISTS ix_entries_nas_parent_path
+            ON entries (nas_id, parent_path)
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE INDEX IF NOT EXISTS ix_entries_nas_entry_type
+            ON entries (nas_id, entry_type)
+            """
+        )
+        connection.exec_driver_sql(
+            """
+            CREATE INDEX IF NOT EXISTS ix_entries_nas_generation
+            ON entries (nas_id, scan_generation)
+            """
+        )
 
 
 def _migrate_single_nas_config(engine: Engine) -> None:
