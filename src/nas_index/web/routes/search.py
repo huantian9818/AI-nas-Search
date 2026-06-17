@@ -6,13 +6,19 @@ from math import ceil
 from pathlib import PurePosixPath
 from typing import Callable
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from markupsafe import Markup, escape
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from nas_index.models import Entry
 from nas_index.repositories.entries import EntryRepository
+from nas_index.repositories.entries import Page
+from nas_index.services.search_summary import SearchSummaryContext
+from nas_index.services.search_summary import SearchSummaryDirectory
+from nas_index.services.search_summary import SearchSummaryItem
+from nas_index.services.search_summary import SearchSummaryUnavailable
 from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
 from nas_index.web.routes.browse import _normalize_path
@@ -45,6 +51,11 @@ class SearchTreeNode:
     is_match: bool
     is_selected: bool
     is_result: bool
+
+
+class SearchSummaryRequest(BaseModel):
+    q: str = Field("")
+    page: int = Field(1, ge=1)
 
 
 def _build_highlighter(
@@ -352,6 +363,36 @@ def _tree_context(
     return tree_nodes, current_path
 
 
+def _summary_context(
+    query: str,
+    results: Page[Entry],
+    result_groups: list[SearchResultGroup],
+) -> SearchSummaryContext:
+    directories: list[SearchSummaryDirectory] = []
+    for group in result_groups:
+        directories.append(
+            SearchSummaryDirectory(
+                path=group.path,
+                item_count=len(group.items),
+                items=tuple(
+                    SearchSummaryItem(
+                        name=item.name,
+                        full_path=item.full_path,
+                        entry_type=item.entry_type,
+                    )
+                    for item in group.items
+                ),
+            )
+        )
+    return SearchSummaryContext(
+        query=query,
+        total=results.total,
+        page=results.page,
+        page_size=results.page_size,
+        directories=tuple(directories),
+    )
+
+
 @router.get(
     "",
     response_class=HTMLResponse,
@@ -472,3 +513,64 @@ def search(
             "format_modified": _format_modified,
         },
     )
+
+
+@router.post("/summary")
+async def summarize_search_results(
+    request: Request,
+    payload: SearchSummaryRequest,
+    session: Session = Depends(get_session),
+) -> dict[str, str]:
+    access = current_access(request)
+    if access is None:
+        raise HTTPException(
+            status_code=401,
+            detail="请先登录",
+        )
+
+    query = payload.q.strip()
+    if not query:
+        raise HTTPException(
+            status_code=422,
+            detail="请输入关键词",
+        )
+
+    repository = EntryRepository(session)
+    results = repository.search(
+        query,
+        nas_id=access.nas_id,
+        allowed_share_paths=access.share_paths,
+        page=payload.page,
+        page_size=50,
+    )
+    if not results.items:
+        return {"summary": "当前搜索没有可总结的结果。"}
+
+    result_groups = _group_results(
+        results.items,
+        selected_id=None,
+    )
+    summarizer = getattr(
+        request.app.state,
+        "search_summarizer",
+        None,
+    )
+    if summarizer is None:
+        raise HTTPException(
+            status_code=503,
+            detail="管理员未配置 AI 总结",
+        )
+    try:
+        summary = await summarizer.summarize(
+            _summary_context(
+                query,
+                results,
+                result_groups,
+            )
+        )
+    except SearchSummaryUnavailable as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=str(exc),
+        ) from exc
+    return {"summary": summary}

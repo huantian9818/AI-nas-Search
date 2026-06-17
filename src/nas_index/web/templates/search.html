@@ -45,6 +45,24 @@
     <section class="section-block">
       {% if results.total %}
         <p>共 {{ results.total }} 条结果，分布在 {{ result_groups | length }} 个目录。</p>
+        <form class="summary-form"
+              data-summary-form
+              data-query="{{ query }}"
+              data-page="{{ results.page }}">
+          <button type="submit">总结这些结果</button>
+          <span class="search-loading"
+                data-summary-loading
+                role="status"
+                aria-live="polite"
+                hidden>
+            总结中...
+          </span>
+        </form>
+        <div class="summary-output"
+             data-summary-output
+             role="status"
+             aria-live="polite"
+             hidden></div>
       {% else %}
         <p>没有找到与 “{{ query }}” 相关的内容。</p>
         <p class="plain-note">
@@ -135,6 +153,66 @@
 
       if (button) {
         button.disabled = true;
+      }
+    });
+
+    const summaryForm = document.querySelector("[data-summary-form]");
+    if (!summaryForm) {
+      return;
+    }
+
+    summaryForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const loading = summaryForm.querySelector("[data-summary-loading]");
+      const button = summaryForm.querySelector('button[type="submit"]');
+      const output = document.querySelector("[data-summary-output]");
+
+      if (loading) {
+        loading.hidden = false;
+      }
+
+      if (button) {
+        button.disabled = true;
+      }
+
+      if (output) {
+        output.hidden = true;
+        output.textContent = "";
+      }
+
+      try {
+        const response = await fetch("/search/summary", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            q: summaryForm.dataset.query || "",
+            page: Number(summaryForm.dataset.page || "1"),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          throw new Error(payload.detail || "总结失败");
+        }
+        if (output) {
+          output.textContent = payload.summary || "没有返回总结。";
+          output.hidden = false;
+        }
+      } catch (error) {
+        if (output) {
+          output.textContent = error.message || "总结失败";
+          output.hidden = false;
+        }
+      } finally {
+        if (loading) {
+          loading.hidden = true;
+        }
+
+        if (button) {
+          button.disabled = false;
+        }
       }
     });
   })();

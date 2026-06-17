@@ -19,6 +19,7 @@ from nas_index.repositories.syncs import SyncRepository
 from nas_index.services.admin import AdminSessionStore
 from nas_index.services.access import AccessSessionStore
 from nas_index.services.scanner import Scanner
+from nas_index.services.search_summary import OpenAIChatSearchSummarizer
 from nas_index.services.sync_manager import SyncManager
 from nas_index.web.routes import admin as admin_routes
 from nas_index.web.routes import access as access_routes
@@ -60,6 +61,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.admin_store = AdminSessionStore(
         ttl_seconds=settings.admin_session_ttl_seconds
     )
+    app.state.search_summarizer = OpenAIChatSearchSummarizer(settings)
     web_dir = Path(__file__).parent
     app.state.templates = Jinja2Templates(
         directory=web_dir / "templates"

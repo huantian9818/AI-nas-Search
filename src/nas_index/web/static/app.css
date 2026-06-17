@@ -182,6 +182,23 @@ p {
   display: none;
 }
 
+.summary-form {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.summary-output {
+  max-width: 720px;
+  white-space: pre-wrap;
+  border-left: 2px solid #111;
+  padding-left: 12px;
+}
+
+.summary-output[hidden] {
+  display: none;
+}
+
 .browser-layout {
   display: grid;
   grid-template-columns: minmax(220px, max-content) minmax(0, 1fr);

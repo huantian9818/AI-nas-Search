@@ -145,6 +145,92 @@ def test_search_page_returns_name_and_full_path(
     assert "Archive" in text
     assert "<mark>项目</mark>" in response.text
     assert "/browse?path=%2FPublic%2F%E8%B5%84%E6%96%99" not in response.text
+    assert "总结这些结果" in response.text
+    assert 'data-summary-form' in response.text
+    assert 'data-summary-output' in response.text
+    assert '"/search/summary"' in response.text
+
+
+def test_search_summary_requires_access_session(client):
+    response = client.post(
+        "/search/summary",
+        json={"q": "项目", "page": 1},
+    )
+
+    assert response.status_code == 401
+
+
+def test_search_summary_uses_only_authorized_results(
+    client,
+    web_seeded_entries,
+    monkeypatch,
+):
+    with Session(client.app.state.engine) as session:
+        EntryRepository(session).upsert_batch(
+            [
+                IndexedItem(
+                    "public-budget.xlsx",
+                    "/Public/public-budget.xlsx",
+                    "/Public",
+                    "file",
+                    16,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "Finance",
+                    "/Finance",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Finance",
+                ),
+                IndexedItem(
+                    "finance-budget.xlsx",
+                    "/Finance/finance-budget.xlsx",
+                    "/Finance",
+                    "file",
+                    32,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Finance",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+
+    class FakeSummarizer:
+        def __init__(self):
+            self.calls = []
+
+        async def summarize(self, context):
+            self.calls.append(context)
+            return "优先查看 Public 目录。"
+
+    summarizer = FakeSummarizer()
+    monkeypatch.setattr(
+        client.app.state,
+        "search_summarizer",
+        summarizer,
+        raising=False,
+    )
+
+    response = client.post(
+        "/search/summary",
+        json={"q": "budget", "page": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"summary": "优先查看 Public 目录。"}
+    assert len(summarizer.calls) == 1
+    context = summarizer.calls[0]
+    assert context.query == "budget"
+    assert context.total == 1
+    assert len(context.directories) == 1
+    assert context.directories[0].path == "/Public"
+    assert context.directories[0].items[0].name == "public-budget.xlsx"
+    assert "finance-budget.xlsx" not in repr(context)
 
 
 def test_search_result_links_to_parent_and_selected_entry(
