@@ -156,11 +156,17 @@ class Scanner:
                     processed,
                 )
             with Session(self.engine) as session:
-                SyncRepository(session).fail(
+                syncs = SyncRepository(session)
+                syncs.fail(
                     run_id,
                     current_path,
                     reason,
                     processed,
+                )
+                self._schedule_failed_share_syncs(
+                    session,
+                    syncs,
+                    reason,
                 )
                 session.commit()
             return run_id
@@ -366,6 +372,26 @@ class Scanner:
                 next_sync_at=next_sync_at,
                 full=True,
             )
+
+    def _schedule_failed_share_syncs(
+        self,
+        session: Session,
+        syncs: SyncRepository,
+        reason: str,
+    ) -> None:
+        server = NasRepository(session).get_server(
+            self.nas_id
+        )
+        if server is None:
+            return
+        next_sync_at = datetime.now(UTC) + timedelta(
+            minutes=server.sync_interval_minutes
+        )
+        syncs.mark_nas_failed(
+            nas_id=self.nas_id,
+            error=reason,
+            next_sync_at=next_sync_at,
+        )
 
     def _progress(
         self,

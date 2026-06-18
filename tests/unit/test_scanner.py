@@ -93,6 +93,53 @@ class FakeQnap:
 
 
 @pytest.mark.asyncio
+async def test_failed_scan_delays_due_share_retry(database):
+    class FailingQnap:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_args):
+            return None
+
+        async def list_shares(self):
+            raise QnapPermissionError()
+
+    with Session(database) as session:
+        nas_id = create_nas(session)
+        SyncRepository(session).ensure_share_state(
+            nas_id=nas_id,
+            share_path="/Public",
+            next_sync_at=datetime.now(UTC)
+            - timedelta(minutes=1),
+        )
+        session.commit()
+
+    before = datetime.now(UTC).replace(tzinfo=None)
+
+    await Scanner(
+        database,
+        lambda: FailingQnap(),
+        page_size=100,
+        batch_size=2,
+        nas_id=nas_id,
+    ).run()
+
+    with Session(database) as session:
+        state = SyncRepository(session).get_share_state(
+            nas_id,
+            "/Public",
+        )
+        scan = session.scalar(
+            select(SyncRun).order_by(SyncRun.id.desc())
+        )
+
+    assert scan.status == "failed"
+    assert state.status == "failed"
+    assert state.next_sync_at >= before + timedelta(minutes=29)
+    assert state.last_error == "NAS 账号没有读取该目录的权限"
+
+
+@pytest.mark.asyncio
 async def test_successful_scan_schedules_next_share_sync(database):
     with Session(database) as session:
         nas_id = create_nas(session)

@@ -153,6 +153,24 @@ class SyncRepository:
         state.last_error = error
         state.next_sync_at = next_sync_at
 
+    def mark_nas_failed(
+        self,
+        *,
+        nas_id: int,
+        error: str,
+        next_sync_at: datetime,
+    ) -> int:
+        result = self.session.execute(
+            update(ShareSyncState)
+            .where(ShareSyncState.nas_id == nas_id)
+            .values(
+                status="failed",
+                last_error=error,
+                next_sync_at=next_sync_at,
+            )
+        )
+        return result.rowcount or 0
+
     def get_share_state(
         self,
         nas_id: int,
