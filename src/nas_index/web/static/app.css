@@ -183,9 +183,20 @@ p {
 }
 
 .summary-form {
-  display: flex;
+  display: grid;
+  grid-template-columns: max-content minmax(220px, 560px) max-content max-content;
   gap: 12px;
-  align-items: center;
+  align-items: end;
+}
+
+.summary-question-label {
+  display: block;
+  padding-bottom: 4px;
+  white-space: nowrap;
+}
+
+.summary-question {
+  max-width: 560px;
 }
 
 .summary-output {
@@ -411,7 +422,8 @@ td {
 @media (max-width: 940px) {
   .browser-layout,
   .compact-page .browser-layout,
-  .search-form {
+  .search-form,
+  .summary-form {
     grid-template-columns: 1fr;
   }
 

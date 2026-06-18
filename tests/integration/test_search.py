@@ -163,8 +163,11 @@ def test_search_page_returns_name_and_full_path(
     assert "search-result-list" not in response.text
     assert "browse-main" not in response.text
     assert "/browse?path=%2FPublic%2F%E8%B5%84%E6%96%99" not in response.text
-    assert "总结这些结果" in response.text
+    assert "总结这些结果" not in response.text
+    assert "问 AI" in text
+    assert "输入你的问题" in response.text
     assert 'data-summary-form' in response.text
+    assert 'data-summary-question' in response.text
     assert 'data-summary-output' in response.text
     assert 'data-summary-payload' in response.text
     assert '"/search/summary"' in response.text
@@ -279,7 +282,11 @@ def test_search_page_includes_all_results_and_summary_payload(
 def test_search_summary_requires_access_session(client):
     response = client.post(
         "/search/summary",
-        json={"payload": "x", "signature": "x"},
+        json={
+            "payload": "x",
+            "signature": "x",
+            "question": "哪些目录值得先看？",
+        },
     )
 
     assert response.status_code == 401
@@ -329,8 +336,13 @@ def test_search_summary_uses_only_authorized_results(
         def __init__(self):
             self.calls = []
 
-        async def summarize(self, context):
-            self.calls.append(context)
+        async def answer(self, context, question):
+            self.calls.append(
+                {
+                    "context": context,
+                    "question": question,
+                }
+            )
             return "优先查看 Public 目录。"
 
     summarizer = FakeSummarizer()
@@ -359,13 +371,17 @@ def test_search_summary_uses_only_authorized_results(
 
     response = client.post(
         "/search/summary",
-        json=summary_payload,
+        json={
+            **summary_payload,
+            "question": "哪些目录值得先看？",
+        },
     )
 
     assert response.status_code == 200
-    assert response.json() == {"summary": "优先查看 Public 目录。"}
+    assert response.json() == {"answer": "优先查看 Public 目录。"}
     assert len(summarizer.calls) == 1
-    context = summarizer.calls[0]
+    assert summarizer.calls[0]["question"] == "哪些目录值得先看？"
+    context = summarizer.calls[0]["context"]
     assert context.query == "budget"
     assert context.total == 1
     assert len(context.directories) == 1
@@ -390,10 +406,35 @@ def test_search_summary_rejects_tampered_payload(
 
     response = client.post(
         "/search/summary",
-        json=summary_payload,
+        json={
+            **summary_payload,
+            "question": "哪些目录值得先看？",
+        },
     )
 
     assert response.status_code == 400
+
+
+def test_search_summary_requires_question(
+    client,
+    search_layout_entries,
+):
+    search_response = client.get(
+        "/search",
+        params={"q": "项目"},
+    )
+    assert search_response.status_code == 200
+    summary_payload = _summary_payload(search_response.text)
+
+    response = client.post(
+        "/search/summary",
+        json={
+            **summary_payload,
+            "question": " ",
+        },
+    )
+
+    assert response.status_code == 422
 
 
 def test_search_summary_rejects_payload_from_different_access(
@@ -415,7 +456,10 @@ def test_search_summary_rejects_payload_from_different_access(
 
     response = client.post(
         "/search/summary",
-        json=summary_payload,
+        json={
+            **summary_payload,
+            "question": "哪些目录值得先看？",
+        },
     )
 
     assert response.status_code == 403

@@ -183,9 +183,27 @@ class OpenAIChatSearchSummarizer:
         self.timeout_seconds = settings.ai_timeout_seconds
         self.max_tokens = settings.ai_max_tokens
 
+    async def answer(
+        self,
+        context: SearchSummaryContext,
+        question: str,
+    ) -> str:
+        return await self._complete(
+            _format_question_prompt(
+                context,
+                question,
+            )
+        )
+
     async def summarize(
         self,
         context: SearchSummaryContext,
+    ) -> str:
+        return await self._complete(_format_prompt(context))
+
+    async def _complete(
+        self,
+        user_content: str,
     ) -> str:
         if not self.api_key:
             raise SearchSummaryUnavailable("管理员未配置 AI 总结")
@@ -216,7 +234,7 @@ class OpenAIChatSearchSummarizer:
                             },
                             {
                                 "role": "user",
-                                "content": _format_prompt(context),
+                                "content": user_content,
                             },
                         ],
                         "temperature": 0.2,
@@ -240,6 +258,49 @@ class OpenAIChatSearchSummarizer:
 
 
 def _format_prompt(context: SearchSummaryContext) -> str:
+    lines = [
+        "请按以下格式输出：",
+        "1. 总体判断：用 2-3 句话说明这批结果大概是什么。",
+        "2. 主要命中方向：按主题归类，并引用目录或文件名证据。",
+        "3. 优先查看目录：列 3-8 个目录，每个说明为什么值得先点。",
+        "4. 重复和版本线索：指出同名、相似名、分辨率、转曲、源文件等线索。",
+        "5. 建议下一步：给出可继续搜索的关键词或下一步查看建议。",
+        "",
+        "约束：",
+        "- 不要猜测文件内容，只能根据路径、目录名、文件名判断。",
+        "- 不要要求读取文件或访问 NAS。",
+        "- 如果证据不足，直接说证据不足。",
+        "- 每个重要判断都要引用至少一个目录或文件名作为依据。",
+        "",
+        "参考资料：",
+    ]
+    lines.extend(_format_result_reference(context))
+    return "\n".join(lines)
+
+
+def _format_question_prompt(
+    context: SearchSummaryContext,
+    question: str,
+) -> str:
+    lines = [
+        f"用户问题：{question.strip()}",
+        "",
+        "回答要求：",
+        "- 只回答用户问题，不要输出完整总结。",
+        "- 最多 5 条；每条尽量不超过 2 句话。",
+        "- 优先给出可查看的目录或文件名线索。",
+        "- 每条关键判断都要引用目录或文件名作为依据。",
+        "- 如果当前搜索结果里看不出来，就回答“当前搜索结果里看不出来”。",
+        "",
+        "参考资料：",
+    ]
+    lines.extend(_format_result_reference(context))
+    return "\n".join(lines)
+
+
+def _format_result_reference(
+    context: SearchSummaryContext,
+) -> list[str]:
     provided_count = sum(
         len(directory.items)
         for directory in context.directories
@@ -260,25 +321,8 @@ def _format_prompt(context: SearchSummaryContext) -> str:
     lines.extend(_format_ranked_counts(_file_type_counts(context)))
     lines.append("重复和版本线索：")
     lines.extend(_format_version_groups(context))
-    lines.extend(
-        [
-            "",
-            "请按以下格式输出：",
-            "1. 总体判断：用 2-3 句话说明这批结果大概是什么。",
-            "2. 主要命中方向：按主题归类，并引用目录或文件名证据。",
-            "3. 优先查看目录：列 3-8 个目录，每个说明为什么值得先点。",
-            "4. 重复和版本线索：指出同名、相似名、分辨率、转曲、源文件等线索。",
-            "5. 建议下一步：给出可继续搜索的关键词或下一步查看建议。",
-            "",
-            "约束：",
-            "- 不要猜测文件内容，只能根据路径、目录名、文件名判断。",
-            "- 不要要求读取文件或访问 NAS。",
-            "- 如果证据不足，直接说证据不足。",
-            "- 每个重要判断都要引用至少一个目录或文件名作为依据。",
-            "",
-            "完整命中目录和文件名：",
-        ]
-    )
+    lines.append("")
+    lines.append("完整命中目录和文件名：")
     for directory in context.directories:
         lines.append(
             f"- 目录：{directory.path}，命中 {directory.item_count} 条"
@@ -292,7 +336,7 @@ def _format_prompt(context: SearchSummaryContext) -> str:
             lines.append(
                 f"  - {item_type}: {item.name} ({item.full_path})"
             )
-    return "\n".join(lines)
+    return lines
 
 
 def _path_counts(

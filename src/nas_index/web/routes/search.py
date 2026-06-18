@@ -58,6 +58,7 @@ class SearchTreeNode:
 class SearchSummaryRequest(BaseModel):
     payload: str = Field(..., min_length=1)
     signature: str = Field(..., min_length=1)
+    question: str = Field(..., max_length=500)
 
 
 def _build_highlighter(
@@ -522,6 +523,13 @@ async def summarize_search_results(
             detail="请先登录",
         )
 
+    question = payload.question.strip()
+    if not question:
+        raise HTTPException(
+            status_code=422,
+            detail="请输入问题",
+        )
+
     try:
         payload_access, context = load_search_summary_payload(
             payload.payload,
@@ -552,7 +560,7 @@ async def summarize_search_results(
         )
 
     if not context.directories:
-        return {"summary": "当前搜索没有可总结的结果。"}
+        return {"answer": "当前搜索没有可参考的结果。"}
 
     summarizer = getattr(
         request.app.state,
@@ -565,10 +573,13 @@ async def summarize_search_results(
             detail="管理员未配置 AI 总结",
         )
     try:
-        summary = await summarizer.summarize(context)
+        answer = await summarizer.answer(
+            context,
+            question,
+        )
     except SearchSummaryUnavailable as exc:
         raise HTTPException(
             status_code=503,
             detail=str(exc),
         ) from exc
-    return {"summary": summary}
+    return {"answer": answer}

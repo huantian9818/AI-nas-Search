@@ -79,7 +79,42 @@ def test_format_prompt_builds_search_result_map():
     assert "完整命中目录和文件名" in prompt
 
 
-async def test_openai_chat_summarizer_ignores_environment_proxy(
+def test_format_question_prompt_uses_user_question_and_short_answer_rules():
+    context = SearchSummaryContext(
+        query="葡萄",
+        total=1,
+        page=1,
+        page_size=1,
+        directories=(
+            SearchSummaryDirectory(
+                path="/设计部/包装设计/源文件",
+                item_count=1,
+                items=(
+                    SearchSummaryItem(
+                        name="0卡果冻-葡萄.psd",
+                        full_path="/设计部/包装设计/源文件/0卡果冻-葡萄.psd",
+                        entry_type="file",
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    prompt = search_summary._format_question_prompt(
+        context,
+        "源文件在哪些目录？",
+    )
+
+    assert "用户问题：源文件在哪些目录？" in prompt
+    assert "最多 5 条" in prompt
+    assert "只回答用户问题" in prompt
+    assert "当前搜索结果里看不出来" in prompt
+    assert "搜索结果地图" in prompt
+    assert "/设计部/包装设计/源文件" in prompt
+    assert "0卡果冻-葡萄.psd" in prompt
+
+
+async def test_openai_chat_answer_ignores_environment_proxy(
     monkeypatch,
 ):
     client_calls = []
@@ -131,17 +166,18 @@ async def test_openai_chat_summarizer_ignores_environment_proxy(
         )
     )
 
-    summary = await summarizer.summarize(
+    answer = await summarizer.answer(
         SearchSummaryContext(
             query="苹果",
             total=0,
             page=1,
             page_size=50,
             directories=(),
-        )
+        ),
+        "哪些目录值得先看？",
     )
 
-    assert summary == "摘要"
+    assert answer == "摘要"
     assert client_calls[0]["trust_env"] is False
     request_json = post_calls[0]["kwargs"]["json"]
     assert request_json["enable_thinking"] is False
@@ -153,4 +189,8 @@ async def test_openai_chat_summarizer_ignores_environment_proxy(
     assert (
         "引用下面提供的目录或文件名"
         in request_json["messages"][0]["content"]
+    )
+    assert (
+        "用户问题：哪些目录值得先看？"
+        in request_json["messages"][1]["content"]
     )

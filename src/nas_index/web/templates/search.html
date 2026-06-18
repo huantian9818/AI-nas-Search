@@ -50,13 +50,21 @@
           </script>
         {% endif %}
         <form class="summary-form" data-summary-form>
-          <button type="submit">总结这些结果</button>
+          <label class="summary-question-label" for="summary-question">
+            问 AI
+          </label>
+          <input id="summary-question"
+                 class="summary-question"
+                 name="question"
+                 data-summary-question
+                 placeholder="输入你的问题">
+          <button type="submit">提问</button>
           <span class="search-loading"
                 data-summary-loading
                 role="status"
                 aria-live="polite"
                 hidden>
-            总结中...
+            回答中...
           </span>
         </form>
         <div class="summary-output"
@@ -131,6 +139,12 @@
       }
 
       try {
+        const questionInput = summaryForm.querySelector("[data-summary-question]");
+        const question = questionInput ? questionInput.value.trim() : "";
+        if (!question) {
+          throw new Error("请输入问题");
+        }
+
         const payloadElement = document.querySelector("[data-summary-payload]");
         const summaryPayload = payloadElement
           ? JSON.parse(payloadElement.textContent || "{}")
@@ -144,14 +158,17 @@
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify(summaryPayload),
+          body: JSON.stringify({
+            ...summaryPayload,
+            question,
+          }),
         });
         const payload = await response.json();
         if (!response.ok) {
           throw new Error(payload.detail || "总结失败");
         }
         if (output) {
-          output.textContent = payload.summary || "没有返回总结。";
+          output.textContent = payload.answer || "没有返回回答。";
           output.hidden = false;
         }
       } catch (error) {
