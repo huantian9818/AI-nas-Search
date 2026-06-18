@@ -4,6 +4,7 @@
          hx-trigger="every 2s"
          hx-swap="outerHTML">
   <p>状态：正在扫描</p>
+  <p>开始：{{ format_time(scan.started_at) }}</p>
   <p>已处理：{{ scan.processed_entries }} 条</p>
   <p>路径：<code>{{ scan.current_path or "/" }}</code></p>
 </section>
@@ -19,6 +20,8 @@
       }[scan.status]
     }}
   </p>
+  <p>开始：{{ format_time(scan.started_at) }}</p>
+  <p>结束：{{ format_time(scan.finished_at) }}</p>
   <p>已处理：{{ scan.processed_entries }} 条</p>
   {% if scan.error_summary %}
     <p>原因：{{ scan.error_summary }}</p>

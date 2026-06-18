@@ -8,7 +8,7 @@
     <p>文件夹：{{ directory_count }}</p>
     <p>
       最后成功同步：
-      {{ last_successful_scan.finished_at if last_successful_scan else "尚无记录" }}
+      {{ format_time(last_successful_scan.finished_at) if last_successful_scan else "尚无记录" }}
     </p>
   </section>
 

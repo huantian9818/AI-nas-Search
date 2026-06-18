@@ -1,11 +1,11 @@
 import asyncio
 from collections.abc import Callable
-from datetime import UTC, datetime
 from typing import Any
 
 from sqlalchemy.orm import Session
 
 from nas_index.repositories.syncs import SyncRepository
+from nas_index.time import now_beijing
 
 
 class NasSyncAlreadyRunning(RuntimeError):
@@ -81,7 +81,7 @@ class SyncManager:
             return
         with self.session_factory() as session:
             due = SyncRepository(session).due_share_states(
-                datetime.now(UTC)
+                now_beijing()
             )
         for state in due:
             if not self.is_running(state.nas_id):

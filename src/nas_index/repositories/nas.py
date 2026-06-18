@@ -1,9 +1,8 @@
-from datetime import UTC, datetime
-
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from nas_index.models import NasCredential, NasServer
+from nas_index.time import now_beijing
 from nas_index.types import (
     NasCredentialValue,
     NasConnection,
@@ -31,7 +30,7 @@ class NasRepository:
         if not password:
             raise ValueError("首次保存时必须输入索引账号密码")
 
-        now = datetime.now(UTC)
+        now = now_beijing()
         row = NasServer(
             name=name.strip(),
             base_url=base_url.rstrip("/"),
@@ -70,7 +69,7 @@ class NasRepository:
         if row is None:
             raise LookupError("NAS 不存在")
 
-        now = datetime.now(UTC)
+        now = now_beijing()
         row.name = name.strip()
         row.base_url = base_url.rstrip("/")
         row.port = port

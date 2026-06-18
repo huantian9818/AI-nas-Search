@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Generic, TypeVar
 
 from sqlalchemy import bindparam, case, delete, func, select, text
@@ -7,6 +7,7 @@ from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
 from nas_index.models import Entry
+from nas_index.time import now_beijing
 from nas_index.types import IndexedItem
 
 T = TypeVar("T")
@@ -61,7 +62,7 @@ class EntryRepository:
             raise TypeError("items must be a list")
         if not items:
             return
-        now = datetime.now(UTC)
+        now = now_beijing()
         values = [
             {
                 "name": item.name,

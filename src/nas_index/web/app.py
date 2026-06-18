@@ -22,6 +22,7 @@ from nas_index.services.access import AccessSessionStore
 from nas_index.services.scanner import Scanner
 from nas_index.services.search_summary import OpenAIChatSearchSummarizer
 from nas_index.services.sync_manager import SyncManager
+from nas_index.time import format_beijing
 from nas_index.web.routes import admin as admin_routes
 from nas_index.web.routes import access as access_routes
 from nas_index.web.routes import dashboard
@@ -71,6 +72,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.templates.env.globals["is_admin"] = (
         admin_routes.current_admin
     )
+    app.state.templates.env.globals["format_time"] = format_beijing
 
     def scanner_factory(nas_id: int) -> Scanner:
         with Session(engine) as session:

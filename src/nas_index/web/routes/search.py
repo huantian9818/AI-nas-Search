@@ -22,6 +22,7 @@ from nas_index.services.search_summary import SearchSummaryPayloadError
 from nas_index.services.search_summary import SearchSummaryUnavailable
 from nas_index.services.search_summary import load_search_summary_payload
 from nas_index.services.search_summary import sign_search_summary_payload
+from nas_index.time import format_beijing
 from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
 from nas_index.web.routes.browse import _normalize_path
@@ -147,9 +148,7 @@ def _format_size(size_bytes: int | None) -> str:
 def _format_modified(
     modified_at: datetime | None,
 ) -> str:
-    if modified_at is None:
-        return "—"
-    return modified_at.strftime("%Y-%m-%d %H:%M")
+    return format_beijing(modified_at)
 
 
 def _breadcrumb_parts(

@@ -1,9 +1,10 @@
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from nas_index.models import ShareSyncState, SyncError, SyncRun
+from nas_index.time import now_beijing
 
 
 class SyncRepository:
@@ -31,7 +32,7 @@ class SyncRepository:
             share_path=share_path,
             generation=generation,
             status="running",
-            started_at=datetime.now(UTC),
+            started_at=now_beijing(),
             finished_at=None,
             processed_entries=0,
             current_path=None,
@@ -59,7 +60,7 @@ class SyncRepository:
         run = self._require_run(run_id)
         run.status = "succeeded"
         run.processed_entries = processed
-        run.finished_at = datetime.now(UTC)
+        run.finished_at = now_beijing()
 
     def fail(
         self,
@@ -73,13 +74,13 @@ class SyncRepository:
         run.processed_entries = processed
         run.current_path = path
         run.error_summary = reason
-        run.finished_at = datetime.now(UTC)
+        run.finished_at = now_beijing()
         self.session.add(
             SyncError(
                 sync_run_id=run_id,
                 path=path,
                 reason=reason,
-                created_at=datetime.now(UTC),
+                created_at=now_beijing(),
             )
         )
 
@@ -129,7 +130,7 @@ class SyncRepository:
         state = self.get_share_state(nas_id, share_path)
         if state is None:
             raise LookupError("share sync state not found")
-        now = datetime.now(UTC)
+        now = now_beijing()
         state.status = "succeeded"
         state.last_synced_at = now
         if full:
@@ -228,7 +229,7 @@ class SyncRepository:
             .where(SyncRun.status == "running")
             .values(
                 status="interrupted",
-                finished_at=datetime.now(UTC),
+                finished_at=now_beijing(),
             )
         )
         self.session.execute(

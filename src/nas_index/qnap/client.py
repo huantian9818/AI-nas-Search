@@ -2,7 +2,6 @@ import asyncio
 import base64
 import json
 import logging
-from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import AsyncIterator
 from urllib.parse import quote, urlencode
@@ -17,6 +16,7 @@ from nas_index.qnap.errors import (
     QnapProtocolError,
     QnapTwoStepRequired,
 )
+from nas_index.time import from_timestamp_beijing
 from nas_index.types import IndexedItem, NasConnection
 
 
@@ -287,7 +287,7 @@ class QnapClient:
                     ),
                     size_bytes=size_bytes,
                     modified_at=(
-                        datetime.fromtimestamp(epoch, UTC)
+                        from_timestamp_beijing(epoch)
                         if epoch
                         else None
                     ),

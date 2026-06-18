@@ -1,4 +1,5 @@
-from datetime import UTC, datetime
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 import pytest
@@ -104,7 +105,15 @@ async def test_iter_children_follows_total_and_normalizes_metadata():
     assert items[0].full_path == "/Public/子目录"
     assert items[0].entry_type == "directory"
     assert items[1].size_bytes == 12
-    assert items[1].modified_at == datetime.fromtimestamp(20, UTC)
+    assert items[1].modified_at == datetime(
+        1970,
+        1,
+        1,
+        8,
+        0,
+        20,
+        tzinfo=ZoneInfo("Asia/Shanghai"),
+    )
 
 
 @pytest.mark.asyncio

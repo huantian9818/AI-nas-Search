@@ -1,6 +1,8 @@
 from collections.abc import Callable
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from secrets import token_urlsafe
+
+from nas_index.time import now_beijing
 
 
 class AdminSessionStore:
@@ -11,7 +13,7 @@ class AdminSessionStore:
         now: Callable[[], datetime] | None = None,
     ):
         self.ttl_seconds = ttl_seconds
-        self.now = now or (lambda: datetime.now(UTC))
+        self.now = now or now_beijing
         self._sessions: dict[str, datetime] = {}
 
     def create(self) -> str:

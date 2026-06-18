@@ -1,5 +1,3 @@
-from datetime import UTC, datetime
-
 from sqlalchemy.orm import Session
 
 from nas_index.models import NasConfig

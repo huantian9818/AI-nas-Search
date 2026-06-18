@@ -46,6 +46,26 @@ FTS_DDL = (
 )
 
 
+BEIJING_TIME_MIGRATION_KEY = "beijing_time_migration_applied"
+
+
+DATETIME_COLUMNS = {
+    "nas_config": ("updated_at",),
+    "nas_servers": ("created_at", "updated_at"),
+    "nas_credentials": ("updated_at",),
+    "entries": ("modified_at", "created_at", "updated_at"),
+    "share_sync_state": (
+        "last_synced_at",
+        "last_full_synced_at",
+        "next_sync_at",
+    ),
+    "sync_runs": ("started_at", "finished_at"),
+    "sync_errors": ("created_at",),
+    "scan_runs": ("started_at", "finished_at"),
+    "scan_errors": ("created_at",),
+}
+
+
 def create_database_engine(database_url: str) -> Engine:
     if database_url.startswith("sqlite:///"):
         path = Path(database_url.removeprefix("sqlite:///"))
@@ -75,6 +95,7 @@ def init_database(engine: Engine) -> None:
     _migrate_legacy_schema(engine)
     Base.metadata.create_all(engine)
     _migrate_legacy_schema(engine)
+    _migrate_utc_times_to_beijing(engine)
     with engine.begin() as connection:
         for statement in FTS_DDL:
             connection.exec_driver_sql(statement)
@@ -92,6 +113,74 @@ def _migrate_legacy_schema(engine: Engine) -> None:
         _migrate_single_nas_config(engine)
     if "entries" in table_names:
         _backfill_entry_scope(engine)
+
+
+def _migrate_utc_times_to_beijing(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            """
+            CREATE TABLE IF NOT EXISTS app_metadata (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+            """
+        )
+        marker = connection.execute(
+            text(
+                """
+                SELECT value
+                FROM app_metadata
+                WHERE key = :key
+                """
+            ),
+            {"key": BEIJING_TIME_MIGRATION_KEY},
+        ).scalar()
+        if marker == "1":
+            return
+
+        table_names = {
+            row["name"]
+            for row in connection.execute(
+                text(
+                    """
+                    SELECT name
+                    FROM sqlite_master
+                    WHERE type = 'table'
+                    """
+                )
+            ).mappings()
+        }
+        for table_name, column_names in DATETIME_COLUMNS.items():
+            if table_name not in table_names:
+                continue
+            existing_columns = {
+                row["name"]
+                for row in connection.execute(
+                    text(f"PRAGMA table_info({table_name})")
+                ).mappings()
+            }
+            for column_name in column_names:
+                if column_name not in existing_columns:
+                    continue
+                connection.exec_driver_sql(
+                    f"""
+                    UPDATE {table_name}
+                    SET {column_name} = datetime({column_name}, '+8 hours')
+                    WHERE {column_name} IS NOT NULL
+                    """
+                )
+
+        connection.execute(
+            text(
+                """
+                INSERT OR REPLACE INTO app_metadata (key, value)
+                VALUES (:key, '1')
+                """
+            ),
+            {"key": BEIJING_TIME_MIGRATION_KEY},
+        )
 
 
 def _migrate_entries_table(engine: Engine) -> None:

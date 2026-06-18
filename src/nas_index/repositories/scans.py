@@ -1,9 +1,8 @@
-from datetime import UTC, datetime
-
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from nas_index.models import ScanError, ScanRun
+from nas_index.time import now_beijing
 
 
 class ScanRepository:
@@ -22,7 +21,7 @@ class ScanRepository:
         run = ScanRun(
             generation=generation,
             status="running",
-            started_at=datetime.now(UTC),
+            started_at=now_beijing(),
             finished_at=None,
             processed_entries=0,
             current_path=None,
@@ -54,7 +53,7 @@ class ScanRepository:
             raise LookupError("scan run not found")
         run.status = "succeeded"
         run.processed_entries = processed
-        run.finished_at = datetime.now(UTC)
+        run.finished_at = now_beijing()
 
     def fail(
         self,
@@ -70,13 +69,13 @@ class ScanRepository:
         run.processed_entries = processed
         run.current_path = path
         run.error_summary = reason
-        run.finished_at = datetime.now(UTC)
+        run.finished_at = now_beijing()
         self.session.add(
             ScanError(
                 scan_run_id=run_id,
                 path=path,
                 reason=reason,
-                created_at=datetime.now(UTC),
+                created_at=now_beijing(),
             )
         )
 
@@ -107,7 +106,7 @@ class ScanRepository:
             )
             .values(
                 status="interrupted",
-                finished_at=datetime.now(UTC),
+                finished_at=now_beijing(),
             )
         )
         return result.rowcount or 0

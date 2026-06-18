@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 import logging
 from pathlib import PurePosixPath
 from time import monotonic
@@ -15,6 +15,7 @@ from nas_index.repositories.entries import DEFAULT_NAS_ID
 from nas_index.repositories.entries import EntryRepository
 from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
+from nas_index.time import now_beijing
 from nas_index.types import IndexedItem
 
 
@@ -356,7 +357,7 @@ class Scanner:
         )
         if server is None:
             return
-        next_sync_at = datetime.now(UTC) + timedelta(
+        next_sync_at = now_beijing() + timedelta(
             minutes=server.sync_interval_minutes
         )
         for share_path in share_paths:
@@ -384,7 +385,7 @@ class Scanner:
         )
         if server is None:
             return
-        next_sync_at = datetime.now(UTC) + timedelta(
+        next_sync_at = now_beijing() + timedelta(
             minutes=server.sync_interval_minutes
         )
         syncs.mark_nas_failed(
