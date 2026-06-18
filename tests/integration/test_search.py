@@ -378,7 +378,17 @@ def test_search_summary_uses_only_authorized_results(
     )
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "优先查看 Public 目录。"}
+    summary_response = response.json()
+    assert summary_response["answer"] == "优先查看 Public 目录。"
+    assert {
+        "path": "/Public/public-budget.xlsx",
+        "url": "/browse?path=/Public",
+    } in summary_response["links"]
+    assert {
+        "path": "/Public",
+        "url": "/browse?path=/Public",
+    } in summary_response["links"]
+    assert "Finance" not in repr(summary_response["links"])
     assert len(summarizer.calls) == 1
     assert summarizer.calls[0]["question"] == "哪些目录值得先看？"
     context = summarizer.calls[0]["context"]
@@ -388,6 +398,51 @@ def test_search_summary_uses_only_authorized_results(
     assert context.directories[0].path == "/Public"
     assert context.directories[0].items[0].name == "public-budget.xlsx"
     assert "finance-budget.xlsx" not in repr(context)
+
+
+def test_search_summary_returns_links_for_answer_paths(
+    client,
+    search_layout_entries,
+    monkeypatch,
+):
+    class FakeSummarizer:
+        async def answer(self, context, question):
+            return (
+                "先看 /Public/项目资料/项目预算.xlsx，"
+                "再看 /Public/项目资料。"
+            )
+
+    monkeypatch.setattr(
+        client.app.state,
+        "search_summarizer",
+        FakeSummarizer(),
+        raising=False,
+    )
+
+    search_response = client.get(
+        "/search",
+        params={"q": "项目"},
+    )
+    assert search_response.status_code == 200
+    summary_payload = _summary_payload(search_response.text)
+
+    response = client.post(
+        "/search/summary",
+        json={
+            **summary_payload,
+            "question": "我应该先看哪里？",
+        },
+    )
+
+    assert response.status_code == 200
+    assert {
+        "path": "/Public/项目资料/项目预算.xlsx",
+        "url": "/browse?path=/Public/%E9%A1%B9%E7%9B%AE%E8%B5%84%E6%96%99",
+    } in response.json()["links"]
+    assert {
+        "path": "/Public/项目资料",
+        "url": "/browse?path=/Public/%E9%A1%B9%E7%9B%AE%E8%B5%84%E6%96%99",
+    } in response.json()["links"]
 
 
 def test_search_summary_rejects_tampered_payload(

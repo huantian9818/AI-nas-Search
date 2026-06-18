@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import PurePosixPath
 from typing import Callable
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -396,6 +397,48 @@ def _summary_context(
     )
 
 
+def _browse_url(path: str) -> str:
+    return f"/browse?path={quote(_normalize_path(path), safe='/')}"
+
+
+def _parent_directory_path(path: str) -> str:
+    normalized = _normalize_path(path)
+    if normalized == "/":
+        return "/"
+    parent = normalized.rsplit("/", 1)[0]
+    return parent or "/"
+
+
+def _summary_answer_links(
+    context: SearchSummaryContext,
+) -> list[dict[str, str]]:
+    links: dict[str, str] = {}
+    for directory in context.directories:
+        directory_path = _normalize_path(directory.path)
+        links[directory_path] = _browse_url(directory_path)
+        for item in directory.items:
+            item_path = _normalize_path(item.full_path)
+            if item.entry_type == "directory":
+                links[item_path] = _browse_url(item_path)
+            else:
+                parent_path = _parent_directory_path(
+                    item_path
+                )
+                links[item_path] = _browse_url(parent_path)
+                links[parent_path] = _browse_url(parent_path)
+
+    return [
+        {
+            "path": path,
+            "url": links[path],
+        }
+        for path in sorted(
+            links,
+            key=lambda value: (-len(value), value),
+        )
+    ]
+
+
 @router.get(
     "",
     response_class=HTMLResponse,
@@ -515,7 +558,7 @@ def search(
 async def summarize_search_results(
     request: Request,
     payload: SearchSummaryRequest,
-) -> dict[str, str]:
+) -> dict[str, object]:
     access = current_access(request)
     if access is None:
         raise HTTPException(
@@ -560,7 +603,10 @@ async def summarize_search_results(
         )
 
     if not context.directories:
-        return {"answer": "当前搜索没有可参考的结果。"}
+        return {
+            "answer": "当前搜索没有可参考的结果。",
+            "links": [],
+        }
 
     summarizer = getattr(
         request.app.state,
@@ -582,4 +628,7 @@ async def summarize_search_results(
             status_code=503,
             detail=str(exc),
         ) from exc
-    return {"answer": answer}
+    return {
+        "answer": answer,
+        "links": _summary_answer_links(context),
+    }

@@ -118,6 +118,69 @@
       return;
     }
 
+    const renderSummaryAnswer = (output, answer, links) => {
+      output.textContent = "";
+
+      if (!answer) {
+        output.textContent = "没有返回回答。";
+        return;
+      }
+
+      const sortedLinks = Array.isArray(links)
+        ? [...links]
+            .filter((link) => link && link.path && link.url)
+            .sort((left, right) => right.path.length - left.path.length)
+        : [];
+
+      if (!sortedLinks.length) {
+        output.textContent = answer;
+        return;
+      }
+
+      let cursor = 0;
+      while (cursor < answer.length) {
+        let nextMatch = null;
+
+        for (const link of sortedLinks) {
+          const index = answer.indexOf(link.path, cursor);
+          if (index === -1) {
+            continue;
+          }
+
+          if (
+            nextMatch === null ||
+            index < nextMatch.index ||
+            (index === nextMatch.index && link.path.length > nextMatch.path.length)
+          ) {
+            nextMatch = {
+              index,
+              path: link.path,
+              url: link.url,
+            };
+          }
+        }
+
+        if (nextMatch === null) {
+          output.appendChild(
+            document.createTextNode(answer.slice(cursor))
+          );
+          break;
+        }
+
+        if (nextMatch.index > cursor) {
+          output.appendChild(
+            document.createTextNode(answer.slice(cursor, nextMatch.index))
+          );
+        }
+
+        const anchor = document.createElement("a");
+        anchor.href = nextMatch.url;
+        anchor.textContent = nextMatch.path;
+        output.appendChild(anchor);
+        cursor = nextMatch.index + nextMatch.path.length;
+      }
+    };
+
     summaryForm.addEventListener("submit", async (event) => {
       event.preventDefault();
 
@@ -168,7 +231,7 @@
           throw new Error(payload.detail || "总结失败");
         }
         if (output) {
-          output.textContent = payload.answer || "没有返回回答。";
+          renderSummaryAnswer(output, payload.answer, payload.links);
           output.hidden = false;
         }
       } catch (error) {
