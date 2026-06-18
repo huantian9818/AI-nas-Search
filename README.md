@@ -1,72 +1,213 @@
-# QNAP File Index
+# AI NAS Search
 
-本机只读索引 QTS 5.2.9 中多个 NAS 的共享目录，并提供按用户权限过滤的目录浏览和名称搜索。
+AI NAS Search 是一个面向 QNAP NAS 的本地文件名索引与检索工具。它使用管理员配置的 NAS 索引账号定时同步文件夹和文件名到本机 SQLite 数据库，普通用户再用自己的 NAS 账号登录，系统根据该账号可访问的共享文件夹过滤浏览、搜索和 AI 问答结果。
 
-## 启动
+这个项目的目标不是替代 NAS 文件管理器，而是把「大量 NAS 文件名检索」「按共享文件夹权限隔离」「基于搜索结果向 AI 提问」放到一个轻量 Web 应用里。
+
+## 主要功能
+
+- 多 NAS 配置：管理员可以维护多个 QNAP NAS。
+- 定时增量同步：按 NAS 配置的间隔同步共享文件夹下的文件名数据。
+- 本地数据库搜索：搜索直接查本机 SQLite，避免每次搜索都扫 NAS。
+- 权限过滤：普通用户用自己的 NAS 账号登录，只能看到有权限的共享文件夹。
+- 目录浏览：按用户权限浏览本地索引中的目录结构。
+- 搜索命中目录树：搜索页只展示包含命中结果的目录分支。
+- AI 问答：用户可以基于当前搜索结果向 AI 提问，AI 只能参考本次搜索 payload。
+- AI 路径跳转：AI 回答中的已知目录或文件路径会自动链接到可访问目录。
+- 管理员保护：设置页、手动同步、NAS 管理入口只对管理员开放。
+
+## 工作方式
+
+1. 管理员登录 `/admin/login`。
+2. 管理员在 `/settings` 添加一个或多个 NAS，并保存索引账号。
+3. 程序按同步计划或手动触发，从 NAS API 拉取文件夹和文件名，写入本机数据库。
+4. 普通用户进入 `/access`，选择 NAS 并输入自己的 NAS 账号。
+5. 程序通过 NAS API 判断该用户可访问哪些共享文件夹。
+6. 用户浏览、搜索、AI 问答时，只读取本机数据库中该用户有权限的共享文件夹数据。
+
+QNAP File Station 没有作为第一版依赖的稳定文件变化回调，所以当前以定时增量同步为主。如果后续接入 QNAP Notification Center、Qmiix 或其他事件源，可以把事件作为提前触发同步的信号。
+
+## 技术栈
+
+- Python 3.12+
+- FastAPI
+- SQLAlchemy
+- SQLite
+- Jinja2
+- httpx
+- pytest
+
+## 快速启动
+
+推荐使用 `uv`：
 
 ```bash
 uv sync
-NAS_INDEX_ADMIN_PASSWORD='change-me' uv run uvicorn nas_index.web.app:app --reload
+cp config.example.toml config.toml
+uv run uvicorn nas_index.web.app:app --host 127.0.0.1 --port 8001 --reload
 ```
 
-打开 `http://127.0.0.1:8000/settings`，添加一个或多个 NAS，并为每个 NAS 填写主机、
-端口、HTTP/HTTPS、只读索引账号和密码。保存后可以在概览页手动触发单个 NAS 同步。
+打开：
 
-管理员先打开 `/admin/login` 输入 `NAS_INDEX_ADMIN_PASSWORD`。未登录管理员时，设置页和手动同步接口不可用。
+- 首页：`http://127.0.0.1:8001/`
+- 管理员登录：`http://127.0.0.1:8001/admin/login`
+- 用户访问登录：`http://127.0.0.1:8001/access`
 
-## 多 NAS 与权限
+如果你不用 `uv`，也可以使用本地虚拟环境：
 
-管理员在 `/settings` 中添加一个或多个 NAS。每个 NAS 使用一个只读索引账号同步本地文件名索引。
-索引账号需要授予全部应被索引的共享目录只读权限，并关闭两步验证。管理员索引账号密码会以明文写入本机 SQLite，请仅在可信设备上运行。
+```bash
+python3.12 -m venv .venv
+. .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn nas_index.web.app:app --host 127.0.0.1 --port 8001 --reload
+```
 
-普通用户从 `/access` 选择 NAS 并输入自己的 NAS 账号密码。程序只临时使用该账号读取可访问共享文件夹列表，不会把用户密码写入 SQLite。浏览和搜索只返回该用户可访问共享文件夹下的本地索引数据。
+## 配置文件
 
-普通用户不能访问 `/settings`，也不能触发 `/scans` 手动同步；这些入口只对管理员会话开放。如果没有配置 `NAS_INDEX_ADMIN_PASSWORD`，管理员区默认不可用。
+项目会默认读取根目录下的 `config.toml`。该文件已被 `.gitignore` 忽略，不应该提交到 GitHub。
 
-## 同步
+示例：
 
-程序启动后会按 NAS 的同步间隔调度同步任务，也可以在概览页手动触发单个 NAS 同步。同步成功后会记录每个共享目录的下一次同步时间；同步失败时保留旧索引，避免因为网络、权限或 NAS API 错误误删本地记录。
+```toml
+[app]
+admin_password = "change-me"
 
-QNAP File Station 没有作为第一版依赖的可靠文件变化回调。本程序以定时增量同步为准；后续接入 QNAP Notification Center 或 Qmiix 时，可以把事件作为提前触发同步的信号。
+[ai]
+api_key = ""
+base_url = "https://api.openai.com/v1"
+model = "deepseek-v4"
+timeout_seconds = 30
+max_tokens = 700
+```
 
-## 数据与日志
+也可以使用环境变量覆盖配置，前缀为 `NAS_INDEX_`。例如：
 
-- 默认数据库：`data/nas-index.db`
-- 数据库覆盖：`NAS_INDEX_DATABASE_URL=sqlite:////absolute/path/index.db`
-- 默认日志目录：`logs`
-- 日志目录覆盖：`NAS_INDEX_LOG_DIR=/absolute/path/logs`
-- 默认扫描并发：`4`
-- 扫描并发覆盖：`NAS_INDEX_SCAN_CONCURRENCY=4`
-- 默认批量写入：`500`
-- 批量写入覆盖：`NAS_INDEX_SCAN_BATCH_SIZE=500`
-- 默认进度刷新间隔：`2` 秒
-- 进度刷新覆盖：`NAS_INDEX_SCAN_PROGRESS_INTERVAL_SECONDS=2`
-- 默认跳过回收站目录 `@Recycle`
-- 回收站过滤覆盖：`NAS_INDEX_SCAN_SKIP_RECYCLE=0`
-- 默认用户访问会话有效期：`900` 秒
-- 用户访问会话覆盖：`NAS_INDEX_USER_ACCESS_TTL_SECONDS=900`
-- 默认同步调度轮询间隔：`10` 秒
-- 同步调度轮询覆盖：`NAS_INDEX_SYNC_SCHEDULER_POLL_SECONDS=10`
-- 管理员密码：`NAS_INDEX_ADMIN_PASSWORD`
-- 默认管理员会话有效期：`3600` 秒
-- 管理员会话覆盖：`NAS_INDEX_ADMIN_SESSION_TTL_SECONDS=3600`
+```bash
+NAS_INDEX_ADMIN_PASSWORD="change-me" \
+NAS_INDEX_AI_API_KEY="sk-..." \
+uv run uvicorn nas_index.web.app:app --host 127.0.0.1 --port 8001
+```
 
-首次同步 10 万至 100 万条记录可能耗时较长。同步成功的目录会删除该目录下已经不存在的直接子项；同步失败或程序中断时会保留未成功列举目录的旧索引。
+常用配置：
 
-## 真实 NAS 验收
+| 配置项 | 默认值 | 说明 |
+| --- | --- | --- |
+| `database_url` | `sqlite:///data/nas-index.db` | 本机索引数据库 |
+| `log_dir` | `logs` | 日志目录 |
+| `scan_page_size` | `500` | NAS API 分页大小 |
+| `scan_batch_size` | `500` | 数据库批量写入大小 |
+| `scan_concurrency` | `4` | 同步并发数 |
+| `scan_skip_recycle` | `true` | 是否跳过 `@Recycle` |
+| `qnap_timeout_seconds` | `20` | QNAP API 超时 |
+| `qnap_retry_attempts` | `3` | QNAP API 重试次数 |
+| `user_access_ttl_seconds` | `900` | 普通用户访问会话有效期 |
+| `sync_scheduler_poll_seconds` | `10` | 同步调度轮询间隔 |
+| `admin_password` | 空 | 管理员密码 |
+| `admin_session_ttl_seconds` | `3600` | 管理员会话有效期 |
+| `ai.api_key` | 空 | AI API Key |
+| `ai.base_url` | `https://api.openai.com/v1` | OpenAI 兼容接口地址 |
+| `ai.model` | `deepseek-v4` | AI 模型名称 |
+| `ai.timeout_seconds` | `30` | AI 请求超时 |
+| `ai.max_tokens` | `700` | AI 最大输出长度 |
 
-1. 设置 `NAS_INDEX_ADMIN_PASSWORD` 并启动程序。
-2. 打开 `/admin/login` 登录管理员。
-3. 在设置页新增 QTS 5.2.9 NAS 并通过连接测试。
-4. 在概览页触发该 NAS 同步。
-5. 从 `/access` 使用普通 NAS 用户登录，确认目录页只显示该用户可访问的共享目录。
-6. 在 NAS 新增文件、修改文件时间并删除文件，然后再次同步。
-7. 确认新增项出现、修改时间更新、删除项消失。
-8. 临时撤销一个子目录的读取权限并同步，确认任务失败且旧索引仍然保留。
-9. 恢复权限后重新同步，确认任务成功。
+## 管理员使用
+
+1. 在 `config.toml` 中设置 `admin_password`。
+2. 启动程序。
+3. 打开 `/admin/login` 输入管理员密码。
+4. 进入 `/settings` 添加 NAS。
+5. 填写 NAS 地址、端口、HTTP/HTTPS、索引账号和密码。
+6. 设置同步间隔。
+7. 保存后在概览页手动触发同步，或等待调度器自动同步。
+
+索引账号建议使用专门创建的只读账号，并授权所有需要被索引的共享文件夹。该账号密码会保存在本机 SQLite 数据库中，请只在可信设备上运行本程序。
+
+## 普通用户使用
+
+1. 打开 `/access`。
+2. 选择 NAS。
+3. 输入自己的 NAS 用户名和密码。
+4. 程序会向 NAS 验证账号，并读取该账号可访问的共享文件夹。
+5. 登录后可以进入目录页、搜索页和 AI 问答。
+
+普通用户密码只用于当次 NAS 权限验证，不会写入 SQLite。
+
+## 搜索与 AI 问答
+
+搜索流程：
+
+1. 用户输入关键词。
+2. 后端先按用户可访问共享文件夹过滤数据。
+3. 在过滤后的本地索引中搜索文件名和文件夹名。
+4. 页面展示完整命中目录树。
+5. 同时生成一份签名后的搜索 payload，供 AI 问答使用。
+
+AI 问答流程：
+
+1. 用户在搜索结果页输入问题。
+2. 前端把当前搜索 payload 和问题发给 `/search/summary`。
+3. 后端验证 payload 签名和当前用户权限。
+4. AI 只拿到本次搜索结果中的目录名、文件名和路径。
+5. AI 回答里的已知路径会被前端转换为目录链接。
+
+如果 AI 提到文件路径，链接会打开该文件所在的父目录；如果 AI 提到目录路径，链接会直接打开该目录。
+
+## 数据目录
+
+默认会创建：
+
+- `data/nas-index.db`：SQLite 索引数据库
+- `logs/nas-index.log`：应用日志
+
+这些文件包含本地运行数据，已被 `.gitignore` 忽略。
 
 ## 测试
 
 ```bash
 uv run pytest
 ```
+
+或：
+
+```bash
+. .venv/bin/activate
+pytest
+```
+
+当前测试覆盖：
+
+- 数据库初始化和迁移
+- 多 NAS 配置
+- NAS 权限验证
+- 用户访问会话
+- 文件索引同步
+- 搜索权限过滤
+- 管理员登录保护
+- AI 搜索 payload 和问答接口
+
+## 真实 NAS 验收建议
+
+1. 配置管理员密码并启动程序。
+2. 登录管理员。
+3. 添加一台 QTS 5.2.9 NAS。
+4. 使用只读索引账号通过连接测试。
+5. 手动触发首次同步。
+6. 用普通 NAS 用户登录 `/access`。
+7. 确认目录页只显示该用户可访问的共享文件夹。
+8. 搜索一个文件名关键词，确认搜索结果只来自可访问共享文件夹。
+9. 在 NAS 新增、重命名、删除文件后再次同步。
+10. 确认本地索引随同步更新。
+11. 在搜索页向 AI 提问，确认回答只引用当前搜索结果。
+
+## 安全注意事项
+
+- 不要提交 `config.toml`、数据库、日志或任何真实密码。
+- 建议为索引创建独立只读 NAS 账号。
+- 管理员密码应设置为强密码。
+- 普通用户密码不会落库，但会在登录时发送到对应 NAS API。
+- AI 问答不会读取文件内容，只会使用搜索结果中的路径、目录名和文件名。
+- 如果部署到局域网以外，请在前面加反向代理、HTTPS 和额外访问控制。
+
+## 项目状态
+
+当前版本适合在可信内网环境中运行，用于 QNAP NAS 文件名索引、权限过滤搜索和基于搜索结果的 AI 辅助问答。
