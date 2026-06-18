@@ -368,6 +368,129 @@ td {
   color: #444;
 }
 
+.form-error {
+  color: #9f1239;
+  font-weight: 600;
+}
+
+.settings-page {
+  gap: 28px;
+}
+
+.settings-header {
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
+  align-items: start;
+  gap: 24px;
+}
+
+.settings-warning {
+  padding-left: 12px;
+  border-left: 2px solid #111;
+  color: #333;
+}
+
+.settings-board {
+  gap: 14px;
+}
+
+.settings-section-heading {
+  display: grid;
+  gap: 4px;
+}
+
+.nas-config-list {
+  display: grid;
+  gap: 16px;
+}
+
+.nas-config {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid #111;
+  border-radius: 6px;
+}
+
+.nas-config-new {
+  border-style: dashed;
+}
+
+.nas-config-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: start;
+}
+
+.nas-config-header h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.nas-status {
+  flex: 0 0 auto;
+  color: #555;
+  font-size: 13px;
+}
+
+.nas-status.is-enabled {
+  color: #116329;
+}
+
+.settings-field-groups {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.settings-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.settings-fieldset legend {
+  padding: 0 0 2px;
+  font-weight: 700;
+}
+
+.settings-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.settings-page input:not([type="checkbox"]),
+.settings-page select {
+  max-width: none;
+}
+
+.settings-checkbox {
+  min-height: 35px;
+  align-content: end;
+}
+
+.settings-actions {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding-top: 2px;
+}
+
+.settings-empty {
+  padding: 16px;
+  border: 1px dashed #999;
+  color: #444;
+}
+
+.settings-result:empty {
+  display: none;
+}
+
 .search-breadcrumb {
   display: inline-flex;
   flex-wrap: wrap;
@@ -423,7 +546,8 @@ td {
   .browser-layout,
   .compact-page .browser-layout,
   .search-form,
-  .summary-form {
+  .summary-form,
+  .settings-header {
     grid-template-columns: 1fr;
   }
 
@@ -435,5 +559,14 @@ td {
 @media (max-width: 720px) {
   .site-shell {
     padding: 16px 12px 32px;
+  }
+
+  .nas-config {
+    padding: 12px;
+  }
+
+  .nas-config-header {
+    display: grid;
+    gap: 6px;
   }
 }

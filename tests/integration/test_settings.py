@@ -78,6 +78,34 @@ def test_settings_can_update_nas_and_preserve_blank_password(admin_client):
     assert "留空保留原密码" in page.text
 
 
+def test_settings_page_groups_nas_forms_for_scanning_workflow(admin_client):
+    _create_nas(admin_client, "Office")
+
+    response = admin_client.get("/settings")
+
+    assert response.status_code == 200
+    assert 'class="page settings-page"' in response.text
+    assert 'class="nas-config-list"' in response.text
+    assert 'class="nas-config"' in response.text
+    assert "基本连接" in response.text
+    assert "同步策略" in response.text
+    assert "索引账号" in response.text
+    assert "连接与同步" in response.text
+    assert "新增 NAS" in response.text
+
+
+def test_settings_css_uses_responsive_management_layout(client):
+    response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert ".settings-field-groups" in response.text
+    assert (
+        "grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));"
+        in response.text
+    )
+    assert "@media (max-width: 720px)" in response.text
+
+
 def test_connection_test_returns_sanitized_error(
     admin_client,
     monkeypatch,
