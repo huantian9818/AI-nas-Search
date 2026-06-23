@@ -22,6 +22,7 @@ from nas_index.services.access import AccessSessionStore
 from nas_index.services.scanner import Scanner
 from nas_index.services.search_summary import OpenAIChatSearchSummarizer
 from nas_index.services.sync_manager import SyncManager
+from nas_index.services.thumbnails import ThumbnailService
 from nas_index.time import format_beijing
 from nas_index.web.routes import admin as admin_routes
 from nas_index.web.routes import access as access_routes
@@ -30,6 +31,7 @@ from nas_index.web.routes import browse as browse_routes
 from nas_index.web.routes import scans as scan_routes
 from nas_index.web.routes import search as search_routes
 from nas_index.web.routes import settings as settings_routes
+from nas_index.web.routes import thumbnails as thumbnail_routes
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -64,6 +66,14 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ttl_seconds=settings.admin_session_ttl_seconds
     )
     app.state.search_summarizer = OpenAIChatSearchSummarizer(settings)
+    app.state.thumbnail_service = ThumbnailService(
+        cache_dir=settings.thumbnail_cache_dir,
+        client_factory=lambda connection: QnapClient(
+            connection,
+            timeout_seconds=settings.qnap_timeout_seconds,
+            retry_attempts=settings.qnap_retry_attempts,
+        ),
+    )
     app.state.search_summary_payload_secret = token_bytes(32)
     web_dir = Path(__file__).parent
     app.state.templates = Jinja2Templates(
@@ -124,6 +134,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.include_router(browse_routes.router)
     app.include_router(search_routes.router)
     app.include_router(scan_routes.router)
+    app.include_router(thumbnail_routes.router)
 
     @app.get("/health")
     def health() -> dict[str, str]:

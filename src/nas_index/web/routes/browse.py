@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from nas_index.models import Entry
 from nas_index.repositories.entries import EntryRepository
+from nas_index.services.thumbnails import is_thumbnail_candidate
 from nas_index.types import UserAccess
 from nas_index.web.dependencies import get_session
 from nas_index.web.routes.access import current_access
@@ -138,5 +139,6 @@ def browse(
                 current_path=path,
                 expanded_paths=_expanded_paths(path),
             ),
+            "is_thumbnail_candidate": is_thumbnail_candidate,
         },
     )

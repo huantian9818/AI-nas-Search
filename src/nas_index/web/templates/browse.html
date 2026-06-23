@@ -25,39 +25,36 @@
       <p>共 {{ listing.total }} 项</p>
 
       {% if listing.items %}
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>类型</th>
-                <th>大小</th>
-                <th>修改时间</th>
-              </tr>
-            </thead>
-            <tbody>
-            {% for item in listing.items %}
-              <tr class="{% if selected == item.id %}selected{% endif %}">
-                <td>
-                  <span class="item-label">
-                    {% if item.entry_type == "directory" %}
-                      {{ folder_icon() }}
-                      <a href="/browse?path={{ item.full_path | urlencode }}">
-                        {{ item.name }}
-                      </a>
-                    {% else %}
-                      {{ file_icon() }}
-                      <span>{{ item.name }}</span>
-                    {% endif %}
+        <div class="browse-grid">
+          {% for item in listing.items %}
+            {% set is_directory = item.entry_type == "directory" %}
+            {% set tile_tag = "a" if is_directory else "div" %}
+            <{{ tile_tag }}
+              class="browse-tile{% if selected == item.id %} selected{% endif %}"
+              {% if is_directory %}
+                href="/browse?path={{ item.full_path | urlencode }}"
+              {% endif %}
+            >
+              <span class="browse-tile-preview">
+                {% if is_directory %}
+                  {{ folder_icon() }}
+                {% elif is_thumbnail_candidate(item) %}
+                  <img src="/thumbnails/{{ item.id }}"
+                       alt=""
+                       loading="lazy"
+                       onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                  <span data-thumbnail-fallback hidden>
+                    {{ file_icon() }}
                   </span>
-                </td>
-                <td>{{ "文件夹" if item.entry_type == "directory" else "文件" }}</td>
-                <td>{{ item.size_bytes if item.size_bytes is not none else "—" }}</td>
-                <td>{{ item.modified_at or "—" }}</td>
-              </tr>
-            {% endfor %}
-            </tbody>
-          </table>
+                {% else %}
+                  {{ file_icon() }}
+                {% endif %}
+              </span>
+              <span class="browse-tile-name" title="{{ item.name }}">
+                {{ item.name }}
+              </span>
+            </{{ tile_tag }}>
+          {% endfor %}
         </div>
       {% else %}
         <p>这个目录下没有内容。</p>

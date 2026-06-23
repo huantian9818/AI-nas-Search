@@ -24,6 +24,10 @@ class Page(Generic[T]):
 DEFAULT_NAS_ID = 1
 
 
+def _visible_entry_predicate():
+    return Entry.name.not_like(".%")
+
+
 def share_path_from_full_path(full_path: str) -> str:
     parts = [
         part
@@ -115,6 +119,12 @@ class EntryRepository:
             )
         )
 
+    def get_by_id(
+        self,
+        entry_id: int,
+    ) -> Entry | None:
+        return self.session.get(Entry, entry_id)
+
     def list_children(
         self,
         nas_id_or_parent_path: int | str,
@@ -134,6 +144,7 @@ class EntryRepository:
         predicate = [
             Entry.nas_id == nas_id,
             Entry.parent_path == parent_path,
+            _visible_entry_predicate(),
         ]
         if allowed_share_paths is not None:
             predicate.append(Entry.share_path.in_(allowed_share_paths))
@@ -174,18 +185,19 @@ class EntryRepository:
         page_size: int,
     ) -> Page[Entry]:
         predicate = Entry.parent_path == parent_path
+        visible_predicate = _visible_entry_predicate()
         total = (
             self.session.scalar(
                 select(func.count())
                 .select_from(Entry)
-                .where(predicate)
+                .where(predicate, visible_predicate)
             )
             or 0
         )
         rows = list(
             self.session.scalars(
                 select(Entry)
-                .where(predicate)
+                .where(predicate, visible_predicate)
                 .order_by(
                     case(
                         (
@@ -221,6 +233,7 @@ class EntryRepository:
             Entry.nas_id == nas_id,
             Entry.parent_path == parent_path,
             Entry.entry_type == "directory",
+            _visible_entry_predicate(),
         ]
         if allowed_share_paths is not None:
             predicate.append(Entry.share_path.in_(allowed_share_paths))
@@ -245,6 +258,7 @@ class EntryRepository:
                 .where(
                     Entry.parent_path == parent_path,
                     Entry.entry_type == "directory",
+                    _visible_entry_predicate(),
                 )
                 .order_by(
                     func.lower(Entry.name),

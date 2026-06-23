@@ -227,3 +227,82 @@ async def test_listing_percent_encodes_spaces_in_path():
         ]
 
     assert "path=%2FPublic%2FSpace%20Folder" in seen_url
+
+
+@pytest.mark.asyncio
+async def test_get_thumbnail_requests_qnap_thumb_with_parent_and_name():
+    seen_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_url
+        seen_url = str(request.url)
+        return httpx.Response(
+            200,
+            content=b"jpeg-bytes",
+            headers={"content-type": "image/jpeg"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = QnapClient(CONNECTION, http=http)
+        client.sid = "sid"
+        thumbnail = await client.get_thumbnail(
+            "/Public/设计图/苹果 主图.jpg",
+            size=256,
+        )
+
+    assert thumbnail.content == b"jpeg-bytes"
+    assert thumbnail.media_type == "image/jpeg"
+    assert "func=get_thumb" in seen_url
+    assert "sid=sid" in seen_url
+    assert "path=%2FPublic%2F%E8%AE%BE%E8%AE%A1%E5%9B%BE" in seen_url
+    assert "name=%E8%8B%B9%E6%9E%9C%20%E4%B8%BB%E5%9B%BE.jpg" in seen_url
+    assert "size=256" in seen_url
+
+
+@pytest.mark.asyncio
+async def test_download_file_requests_qnap_download_with_parent_and_name():
+    seen_url = ""
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal seen_url
+        seen_url = str(request.url)
+        return httpx.Response(
+            200,
+            content=b"original-bytes",
+            headers={"content-type": "application/force-download"},
+        )
+
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = QnapClient(CONNECTION, http=http)
+        client.sid = "sid"
+        downloaded = await client.download_file(
+            "/Public/设计图/苹果 主图.jpg",
+        )
+
+    assert downloaded.content == b"original-bytes"
+    assert downloaded.media_type == "application/force-download"
+    assert "func=download" in seen_url
+    assert "sid=sid" in seen_url
+    assert "isfolder=0" in seen_url
+    assert "source_path=%2FPublic%2F%E8%AE%BE%E8%AE%A1%E5%9B%BE" in seen_url
+    assert "source_file=%E8%8B%B9%E6%9E%9C%20%E4%B8%BB%E5%9B%BE.jpg" in seen_url
+    assert "source_total=1" in seen_url
+
+
+def test_qnap_client_ignores_environment_proxy_by_default(monkeypatch):
+    client_kwargs = []
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            client_kwargs.append(kwargs)
+
+    monkeypatch.setattr(
+        "nas_index.qnap.client.httpx.AsyncClient",
+        FakeAsyncClient,
+    )
+
+    QnapClient(CONNECTION)
+
+    assert client_kwargs[0]["trust_env"] is False

@@ -18,6 +18,7 @@ class AppSettings(BaseSettings):
     qnap_retry_attempts: int = 3
     user_access_ttl_seconds: int = 900
     sync_scheduler_poll_seconds: float = 10.0
+    thumbnail_cache_dir: Path = Path("data/thumbnails")
     admin_password: str | None = None
     admin_session_ttl_seconds: int = 3600
     ai_api_key: str | None = None
@@ -45,6 +46,7 @@ APP_CONFIG_FIELDS = {
     "qnap_retry_attempts",
     "user_access_ttl_seconds",
     "sync_scheduler_poll_seconds",
+    "thumbnail_cache_dir",
     "admin_password",
     "admin_session_ttl_seconds",
 }

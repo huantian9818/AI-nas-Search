@@ -1,0 +1,13 @@
+.git/
+.venv/
+.worktrees/
+.pytest_cache/
+__pycache__/
+*.pyc
+.DS_Store
+data/
+logs/
+config.toml
+*.db
+*.db-shm
+*.db-wal

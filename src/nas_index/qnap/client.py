@@ -2,6 +2,7 @@ import asyncio
 import base64
 import json
 import logging
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 from typing import AsyncIterator
 from urllib.parse import quote, urlencode
@@ -21,6 +22,18 @@ from nas_index.types import IndexedItem, NasConnection
 
 
 LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True, slots=True)
+class QnapThumbnail:
+    content: bytes
+    media_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class QnapFile:
+    content: bytes
+    media_type: str
 
 
 def canonical_path(value: str) -> str:
@@ -114,7 +127,10 @@ class QnapClient:
         retry_attempts: int = 3,
     ):
         self.connection = connection
-        self.http = http or httpx.AsyncClient(timeout=timeout_seconds)
+        self.http = http or httpx.AsyncClient(
+            timeout=timeout_seconds,
+            trust_env=False,
+        )
         self._owns_http = http is None
         self.retry_attempts = max(1, min(retry_attempts, 3))
         self.sid: str | None = None
@@ -234,7 +250,7 @@ class QnapClient:
                     "limit": page_size,
                     "sort": "filename",
                     "start": start,
-                    "hidden_file": 1,
+                    "hidden_file": 0,
                     "v": 1,
                 }
             )
@@ -307,6 +323,86 @@ class QnapClient:
                 raise QnapProtocolError() from exc
             if not rows or start >= total:
                 break
+
+    async def get_thumbnail(
+        self,
+        full_path: str,
+        *,
+        size: int = 256,
+    ) -> QnapThumbnail:
+        if not self.sid:
+            raise QnapAuthenticationError()
+        normalized = canonical_path(full_path)
+        path = PurePosixPath(normalized)
+        parent_path = canonical_path(str(path.parent))
+        response = await self._request_with_retry(
+            (
+                f"{self.connection.endpoint}"
+                "/cgi-bin/filemanager/utilRequest.cgi"
+            ),
+            {
+                "func": "get_thumb",
+                "path": parent_path,
+                "name": path.name,
+                "size": size,
+                "sid": self.sid,
+            },
+        )
+        media_type = response.headers.get(
+            "content-type",
+            "image/jpeg",
+        ).split(";")[0].strip().lower()
+        if not response.content or not media_type.startswith("image/"):
+            raise QnapProtocolError()
+        return QnapThumbnail(
+            content=response.content,
+            media_type=media_type,
+        )
+
+    async def download_file(
+        self,
+        full_path: str,
+    ) -> QnapFile:
+        if not self.sid:
+            raise QnapAuthenticationError()
+        normalized = canonical_path(full_path)
+        path = PurePosixPath(normalized)
+        parent_path = canonical_path(str(path.parent))
+        response = await self._request_with_retry(
+            (
+                f"{self.connection.endpoint}"
+                "/cgi-bin/filemanager/utilRequest.cgi"
+            ),
+            {
+                "func": "download",
+                "isfolder": 0,
+                "source_path": parent_path,
+                "source_file": path.name,
+                "source_total": 1,
+                "sid": self.sid,
+            },
+        )
+        media_type = response.headers.get(
+            "content-type",
+            "application/octet-stream",
+        ).split(";")[0].strip().lower()
+        if media_type == "application/json":
+            try:
+                payload = response.json()
+            except ValueError as exc:
+                raise QnapProtocolError() from exc
+            _raise_for_qnap_status(
+                payload,
+                func="download",
+                path=parent_path,
+            )
+            raise QnapProtocolError()
+        if not response.content:
+            raise QnapProtocolError()
+        return QnapFile(
+            content=response.content,
+            media_type=media_type,
+        )
 
     async def _file_station_request(
         self,

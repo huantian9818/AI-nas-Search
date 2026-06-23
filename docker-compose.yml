@@ -1,0 +1,14 @@
+services:
+  ai-nas-search:
+    build: .
+    image: ai-nas-search:latest
+    container_name: ai-nas-search
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    volumes:
+      - ./config.toml:/app/config.toml:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    environment:
+      TZ: Asia/Shanghai
