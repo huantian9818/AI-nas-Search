@@ -10,6 +10,7 @@ from typing import Any
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from nas_index.models import SyncRun
 from nas_index.qnap.errors import QnapError
 from nas_index.repositories.entries import DEFAULT_NAS_ID
 from nas_index.repositories.entries import EntryRepository
@@ -134,6 +135,13 @@ class Scanner:
             )
             return run_id
         except Exception as exc:
+            processed, current_path = (
+                self._latest_recorded_progress(
+                    run_id,
+                    processed,
+                    current_path,
+                )
+            )
             reason = (
                 str(exc)
                 if isinstance(exc, QnapError)
@@ -171,6 +179,23 @@ class Scanner:
                 )
                 session.commit()
             return run_id
+
+    def _latest_recorded_progress(
+        self,
+        run_id: int,
+        fallback_processed: int,
+        fallback_path: str,
+    ) -> tuple[int, str]:
+        with Session(self.engine) as session:
+            run = session.get(SyncRun, run_id)
+            if run is None:
+                return fallback_processed, fallback_path
+            if run.processed_entries < fallback_processed:
+                return fallback_processed, fallback_path
+            return (
+                run.processed_entries,
+                run.current_path or fallback_path,
+            )
 
     async def _scan_directories(
         self,

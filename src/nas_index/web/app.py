@@ -19,6 +19,8 @@ from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
 from nas_index.services.admin import AdminSessionStore
 from nas_index.services.access import AccessSessionStore
+from nas_index.services.process_monitor import ProcessMonitor
+from nas_index.services.scan_rate import ScanRateTracker
 from nas_index.services.scanner import Scanner
 from nas_index.services.search_summary import OpenAIChatSearchSummarizer
 from nas_index.services.sync_manager import SyncManager
@@ -28,6 +30,7 @@ from nas_index.web.routes import admin as admin_routes
 from nas_index.web.routes import access as access_routes
 from nas_index.web.routes import dashboard
 from nas_index.web.routes import browse as browse_routes
+from nas_index.web.routes import downloads as download_routes
 from nas_index.web.routes import scans as scan_routes
 from nas_index.web.routes import search as search_routes
 from nas_index.web.routes import settings as settings_routes
@@ -66,6 +69,8 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         ttl_seconds=settings.admin_session_ttl_seconds
     )
     app.state.search_summarizer = OpenAIChatSearchSummarizer(settings)
+    app.state.process_monitor = ProcessMonitor()
+    app.state.scan_rate_tracker = ScanRateTracker()
     app.state.thumbnail_service = ThumbnailService(
         cache_dir=settings.thumbnail_cache_dir,
         client_factory=lambda connection: QnapClient(
@@ -76,6 +81,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     app.state.search_summary_payload_secret = token_bytes(32)
     web_dir = Path(__file__).parent
+    static_version = str(
+        (web_dir / "static" / "app.css").stat().st_mtime_ns
+    )
     app.state.templates = Jinja2Templates(
         directory=web_dir / "templates"
     )
@@ -83,6 +91,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
         admin_routes.current_admin
     )
     app.state.templates.env.globals["format_time"] = format_beijing
+    app.state.templates.env.globals["static_version"] = (
+        static_version
+    )
 
     def scanner_factory(nas_id: int) -> Scanner:
         with Session(engine) as session:
@@ -132,6 +143,7 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.include_router(access_routes.router)
     app.include_router(settings_routes.router)
     app.include_router(browse_routes.router)
+    app.include_router(download_routes.router)
     app.include_router(search_routes.router)
     app.include_router(scan_routes.router)
     app.include_router(thumbnail_routes.router)

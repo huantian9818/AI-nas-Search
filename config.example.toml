@@ -1,5 +1,6 @@
 [app]
 admin_password = "change-me"
+scan_concurrency = 4
 
 [ai]
 api_key = ""

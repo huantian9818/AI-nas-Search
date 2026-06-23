@@ -5,8 +5,30 @@
          hx-swap="outerHTML">
   <p>状态：正在扫描</p>
   <p>开始：{{ format_time(scan.started_at) }}</p>
+  {% if scan_metrics.elapsed %}
+    <p>耗时：{{ scan_metrics.elapsed }}</p>
+  {% endif %}
   <p>已处理：{{ scan.processed_entries }} 条</p>
+  {% if recent_entries_per_second %}
+    <p>当前速度：{{ recent_entries_per_second }} 条/秒</p>
+  {% else %}
+    <p>当前速度：采样中</p>
+  {% endif %}
+  {% if scan_metrics.entries_per_second %}
+    <p>平均速度：{{ scan_metrics.entries_per_second }} 条/秒</p>
+  {% endif %}
   <p>路径：<code>{{ scan.current_path or "/" }}</code></p>
+  {% if process_usage %}
+    <p>
+      资源：内存：{{ format_bytes(process_usage.rss_bytes) }}，
+      CPU：
+      {% if process_usage.cpu_percent is none %}
+        采样中
+      {% else %}
+        {{ "%.1f"|format(process_usage.cpu_percent) }}%
+      {% endif %}
+    </p>
+  {% endif %}
 </section>
 {% elif scan %}
 <section class="section-block">
@@ -22,7 +44,13 @@
   </p>
   <p>开始：{{ format_time(scan.started_at) }}</p>
   <p>结束：{{ format_time(scan.finished_at) }}</p>
+  {% if scan_metrics.elapsed %}
+    <p>耗时：{{ scan_metrics.elapsed }}</p>
+  {% endif %}
   <p>已处理：{{ scan.processed_entries }} 条</p>
+  {% if scan_metrics.entries_per_second %}
+    <p>平均速度：{{ scan_metrics.entries_per_second }} 条/秒</p>
+  {% endif %}
   {% if scan.error_summary %}
     <p>原因：{{ scan.error_summary }}</p>
   {% endif %}

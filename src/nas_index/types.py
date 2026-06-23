@@ -65,3 +65,4 @@ class UserAccess:
     username: str
     share_paths: tuple[str, ...]
     expires_at: datetime
+    qnap_sid: str | None = None

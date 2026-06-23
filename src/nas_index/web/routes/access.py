@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
@@ -14,6 +16,12 @@ router = APIRouter()
 ACCESS_COOKIE_NAME = "nas_access"
 
 
+@dataclass(frozen=True)
+class AccessCheckResult:
+    share_paths: tuple[str, ...]
+    qnap_sid: str | None
+
+
 def current_access(
     request: Request,
 ) -> UserAccess | None:
@@ -27,19 +35,37 @@ async def check_user_access(
     username: str,
     password: str,
     settings: AppSettings,
-) -> tuple[str, ...]:
+) -> AccessCheckResult:
     connection = server.to_connection(
         username=username,
         password=password,
     )
-    async with QnapClient(
+    client = QnapClient(
         connection,
         timeout_seconds=settings.qnap_timeout_seconds,
         retry_attempts=settings.qnap_retry_attempts,
-    ) as client:
+    )
+    try:
+        await client.login()
         shares = await client.list_shares()
-    return tuple(
-        sorted({share.full_path for share in shares})
+        return AccessCheckResult(
+            share_paths=tuple(
+                sorted({share.full_path for share in shares})
+            ),
+            qnap_sid=client.sid,
+        )
+    finally:
+        await client.close()
+
+
+def _normalize_access_check_result(
+    result,
+) -> AccessCheckResult:
+    if isinstance(result, AccessCheckResult):
+        return result
+    return AccessCheckResult(
+        share_paths=tuple(result),
+        qnap_sid=None,
     )
 
 
@@ -96,11 +122,13 @@ async def create_access(
         check_user_access,
     )
     try:
-        share_paths = await checker(
-            server=server,
-            username=username,
-            password=password,
-            settings=request.app.state.settings,
+        check_result = _normalize_access_check_result(
+            await checker(
+                server=server,
+                username=username,
+                password=password,
+                settings=request.app.state.settings,
+            )
         )
     except QnapError as exc:
         return request.app.state.templates.TemplateResponse(
@@ -128,7 +156,8 @@ async def create_access(
     token = request.app.state.access_store.create(
         nas_id=nas_id,
         username=username,
-        share_paths=tuple(share_paths),
+        share_paths=check_result.share_paths,
+        qnap_sid=check_result.qnap_sid,
     )
     response = RedirectResponse(
         "/browse",

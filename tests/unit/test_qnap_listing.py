@@ -4,7 +4,7 @@ from zoneinfo import ZoneInfo
 import httpx
 import pytest
 
-from nas_index.qnap.client import QnapClient
+from nas_index.qnap.client import QnapClient, build_batch_download_url
 from nas_index.qnap.errors import (
     QnapAuthenticationError,
     QnapPermissionError,
@@ -289,6 +289,45 @@ async def test_download_file_requests_qnap_download_with_parent_and_name():
     assert "source_path=%2FPublic%2F%E8%AE%BE%E8%AE%A1%E5%9B%BE" in seen_url
     assert "source_file=%E8%8B%B9%E6%9E%9C%20%E4%B8%BB%E5%9B%BE.jpg" in seen_url
     assert "source_total=1" in seen_url
+
+
+def test_build_download_url_uses_existing_sid_without_fetching_file():
+    client = QnapClient(CONNECTION)
+    client.sid = "sid"
+
+    url = client.download_url(
+        "/Public/设计图/苹果 主图.jpg",
+    )
+
+    assert url.startswith(
+        "http://nas:8080/cgi-bin/filemanager/utilRequest.cgi?"
+    )
+    assert "func=download" in url
+    assert "sid=sid" in url
+    assert "isfolder=0" in url
+    assert "source_path=%2FPublic%2F%E8%AE%BE%E8%AE%A1%E5%9B%BE" in url
+    assert "source_file=%E8%8B%B9%E6%9E%9C%20%E4%B8%BB%E5%9B%BE.jpg" in url
+    assert "source_total=1" in url
+
+
+def test_build_batch_download_url_repeats_source_file_values():
+    url = build_batch_download_url(
+        endpoint="http://nas:8080",
+        sid="sid",
+        parent_path="/Public/设计图",
+        source_files=("苹果 主图.jpg", "香蕉.png"),
+    )
+
+    assert url.startswith(
+        "http://nas:8080/cgi-bin/filemanager/utilRequest.cgi?"
+    )
+    assert "func=download" in url
+    assert "sid=sid" in url
+    assert "isfolder=0" in url
+    assert "source_path=%2FPublic%2F%E8%AE%BE%E8%AE%A1%E5%9B%BE" in url
+    assert "source_file=%E8%8B%B9%E6%9E%9C%20%E4%B8%BB%E5%9B%BE.jpg" in url
+    assert "source_file=%E9%A6%99%E8%95%89.png" in url
+    assert "source_total=2" in url
 
 
 def test_qnap_client_ignores_environment_proxy_by_default(monkeypatch):

@@ -78,18 +78,77 @@ def _build_request_url(
     url: str,
     params: dict[str, object],
 ) -> str:
+    encoded_params: dict[str, object] = {}
+    for key, value in params.items():
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple)):
+            encoded_params[key] = [
+                _encode_query_value(item)
+                for item in value
+            ]
+        else:
+            encoded_params[key] = _encode_query_value(value)
     query = urlencode(
-        {
-            key: _encode_query_value(value)
-            for key, value in params.items()
-            if value is not None
-        },
+        encoded_params,
         doseq=True,
         quote_via=quote,
     )
     if not query:
         return url
     return f"{url}?{query}"
+
+
+def build_download_url(
+    *,
+    endpoint: str,
+    sid: str,
+    full_path: str,
+    is_directory: bool = False,
+) -> str:
+    normalized = canonical_path(full_path)
+    path = PurePosixPath(normalized)
+    parent_path = canonical_path(str(path.parent))
+    if not is_directory:
+        return build_batch_download_url(
+            endpoint=endpoint,
+            sid=sid,
+            parent_path=parent_path,
+            source_files=(path.name,),
+        )
+    return _build_request_url(
+        f"{endpoint}/cgi-bin/filemanager/utilRequest.cgi",
+        {
+            "func": "download",
+            "isfolder": 1,
+            "source_path": parent_path,
+            "source_file": path.name,
+            "source_total": 1,
+            "sid": sid,
+        },
+    )
+
+
+def build_batch_download_url(
+    *,
+    endpoint: str,
+    sid: str,
+    parent_path: str,
+    source_files: tuple[str, ...],
+) -> str:
+    if not source_files:
+        raise ValueError("source_files must not be empty")
+    return _build_request_url(
+        f"{endpoint}/cgi-bin/filemanager/utilRequest.cgi",
+        {
+            "func": "download",
+            "isfolder": 0,
+            "source_path": canonical_path(parent_path),
+            "source_file": source_files,
+            "source_total": len(source_files),
+            "sid": sid,
+        },
+    )
 
 
 def _raise_for_qnap_status(
@@ -404,6 +463,21 @@ class QnapClient:
             media_type=media_type,
         )
 
+    def download_url(
+        self,
+        full_path: str,
+        *,
+        is_directory: bool = False,
+    ) -> str:
+        if not self.sid:
+            raise QnapAuthenticationError()
+        return build_download_url(
+            endpoint=self.connection.endpoint,
+            sid=self.sid,
+            full_path=full_path,
+            is_directory=is_directory,
+        )
+
     async def _file_station_request(
         self,
         params: dict[str, object],
@@ -479,6 +553,10 @@ class QnapClient:
                 pass
             finally:
                 self.sid = None
+        if self._owns_http:
+            await self.http.aclose()
+
+    async def close(self) -> None:
         if self._owns_http:
             await self.http.aclose()
 

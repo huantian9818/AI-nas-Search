@@ -369,6 +369,49 @@ async def test_failed_directory_records_unknown_status_message(database):
 
 
 @pytest.mark.asyncio
+async def test_failed_scan_keeps_latest_recorded_progress(database):
+    with Session(database) as session:
+        nas_id = create_nas(session)
+
+    class FailingAfterFirstDirectoryScanner(Scanner):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.replace_calls = 0
+
+        def _replace_children(
+            self,
+            parent_path,
+            observed_full_paths,
+        ):
+            self.replace_calls += 1
+            if self.replace_calls > 1:
+                raise RuntimeError("database write failed")
+            super()._replace_children(
+                parent_path,
+                observed_full_paths,
+            )
+
+    await FailingAfterFirstDirectoryScanner(
+        database,
+        lambda: FakeQnap(),
+        page_size=100,
+        batch_size=2,
+        nas_id=nas_id,
+        progress_interval_seconds=0,
+    ).run()
+
+    with Session(database) as session:
+        scan = session.scalar(
+            select(SyncRun).order_by(
+                SyncRun.id.desc()
+            )
+        )
+
+    assert scan.status == "failed"
+    assert scan.processed_entries == 2
+
+
+@pytest.mark.asyncio
 async def test_scan_skips_recycle_directory(database):
     class RecycleQnap(FakeQnap):
         def __init__(self):

@@ -25,37 +25,60 @@
       <p>共 {{ listing.total }} 项</p>
 
       {% if listing.items %}
-        <div class="browse-grid">
-          {% for item in listing.items %}
-            {% set is_directory = item.entry_type == "directory" %}
-            {% set tile_tag = "a" if is_directory else "div" %}
-            <{{ tile_tag }}
-              class="browse-tile{% if selected == item.id %} selected{% endif %}"
-              {% if is_directory %}
-                href="/browse?path={{ item.full_path | urlencode }}"
-              {% endif %}
-            >
-              <span class="browse-tile-preview">
+        <form class="batch-download-form"
+              method="post"
+              action="/downloads/batch">
+          <div class="browse-actions">
+            <button type="submit">批量下载</button>
+          </div>
+          <div class="browse-grid">
+            {% for item in listing.items %}
+              {% set is_directory = item.entry_type == "directory" %}
+              {% set tile_tag = "a" if is_directory else "div" %}
+              <{{ tile_tag }}
+                class="browse-tile{% if selected == item.id %} selected{% endif %}"
                 {% if is_directory %}
-                  {{ folder_icon() }}
-                {% elif is_thumbnail_candidate(item) %}
-                  <img src="/thumbnails/{{ item.id }}"
-                       alt=""
-                       loading="lazy"
-                       onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-                  <span data-thumbnail-fallback hidden>
-                    {{ file_icon() }}
-                  </span>
-                {% else %}
-                  {{ file_icon() }}
+                  href="/browse?path={{ item.full_path | urlencode }}"
                 {% endif %}
-              </span>
-              <span class="browse-tile-name" title="{{ item.name }}">
-                {{ item.name }}
-              </span>
-            </{{ tile_tag }}>
-          {% endfor %}
-        </div>
+              >
+                {% if is_directory %}
+                  <span class="browse-tile-select"></span>
+                {% else %}
+                  <label class="browse-tile-select">
+                    <input type="checkbox"
+                           name="entry_ids"
+                           value="{{ item.id }}"
+                           aria-label="选择 {{ item.name }}">
+                  </label>
+                {% endif %}
+                <span class="browse-tile-preview">
+                  {% if is_directory %}
+                    {{ folder_icon() }}
+                  {% elif is_thumbnail_candidate(item) %}
+                    <img src="/thumbnails/{{ item.id }}"
+                         alt=""
+                         loading="lazy"
+                         onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                    <span data-thumbnail-fallback hidden>
+                      {{ file_icon() }}
+                    </span>
+                  {% else %}
+                    {{ file_icon() }}
+                  {% endif %}
+                </span>
+                <span class="browse-tile-name" title="{{ item.name }}">
+                  {{ item.name }}
+                </span>
+                {% if not is_directory %}
+                  <a class="browse-tile-action"
+                     href="/downloads/{{ item.id }}">
+                    下载
+                  </a>
+                {% endif %}
+              </{{ tile_tag }}>
+            {% endfor %}
+          </div>
+        </form>
       {% else %}
         <p>这个目录下没有内容。</p>
       {% endif %}

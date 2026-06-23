@@ -23,6 +23,7 @@ class AccessSessionStore:
         nas_id: int,
         username: str,
         share_paths: tuple[str, ...],
+        qnap_sid: str | None = None,
     ) -> str:
         token = token_urlsafe(32)
         expires_at = self.now() + timedelta(
@@ -33,6 +34,7 @@ class AccessSessionStore:
             username=username,
             share_paths=tuple(sorted(set(share_paths))),
             expires_at=expires_at,
+            qnap_sid=qnap_sid,
         )
         return token
 

@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy.orm import Session
@@ -64,3 +64,28 @@ def test_scan_status_partial_polls_while_running(
         in response.text
     )
     assert "正在扫描" in response.text
+
+
+def test_scan_status_partial_shows_speed_and_process_usage(
+    client,
+    running_scan,
+):
+    with Session(client.app.state.engine) as session:
+        scan = session.query(SyncRun).one()
+        scan.started_at = datetime.now(UTC) - timedelta(
+            seconds=10
+        )
+        scan.processed_entries = 120
+        session.commit()
+
+    response = client.get(
+        "/scans/status",
+        params={"nas_id": running_scan},
+    )
+
+    assert response.status_code == 200
+    assert "耗时：" in response.text
+    assert "速度：" in response.text
+    assert "条/秒" in response.text
+    assert "内存：" in response.text
+    assert "CPU：" in response.text

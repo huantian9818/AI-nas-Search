@@ -356,17 +356,29 @@ td {
 
 .browse-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(116px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(136px, 136px));
   gap: 12px;
   align-items: start;
 }
 
+.batch-download-form {
+  display: grid;
+  gap: 12px;
+}
+
+.browse-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
 .browse-tile {
   display: grid;
-  grid-template-rows: minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-rows: 20px 96px 34px 18px;
+  gap: 6px;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  min-height: 196px;
   min-width: 0;
   padding: 8px;
   border: 1px solid #111;
@@ -374,6 +386,17 @@ td {
   color: inherit;
   text-decoration: none;
   background: #fff;
+}
+
+.browse-tile-select {
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.browse-tile-select input {
+  margin: 0;
 }
 
 .browse-tile:hover {
@@ -390,6 +413,7 @@ td {
 .browse-tile-preview {
   min-width: 0;
   min-height: 0;
+  height: 96px;
   display: grid;
   place-items: center;
   overflow: hidden;
@@ -404,7 +428,7 @@ td {
 .browse-tile-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   display: block;
 }
 
@@ -417,6 +441,14 @@ td {
   line-height: 1.25;
   word-break: break-word;
   text-align: center;
+  align-self: center;
+}
+
+.browse-tile-action {
+  justify-self: center;
+  align-self: center;
+  font-size: 12px;
+  line-height: 1.2;
 }
 
 .pagination {

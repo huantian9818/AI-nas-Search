@@ -60,6 +60,19 @@ def test_browse_page_uses_icon_grid_with_thumbnail_urls(
     assert "年度项目计划.docx" in response.text
 
 
+def test_browse_page_uses_versioned_static_stylesheet(
+    client,
+    web_seeded_entries,
+):
+    response = client.get(
+        "/browse",
+        params={"path": "/Public"},
+    )
+
+    assert response.status_code == 200
+    assert "/static/app.css?v=" in response.text
+
+
 def test_browse_grid_links_image_files_to_thumbnail_endpoint(
     client,
     web_public_access,
