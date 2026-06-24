@@ -23,7 +23,6 @@ class NasRepository:
         use_https: bool,
         enabled: bool,
         sync_interval_minutes: int,
-        full_resync_interval_hours: int,
         username: str,
         password: str,
     ) -> NasServerValue:
@@ -38,7 +37,6 @@ class NasRepository:
             use_https=use_https,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
-            full_resync_interval_hours=full_resync_interval_hours,
             created_at=now,
             updated_at=now,
         )
@@ -61,7 +59,6 @@ class NasRepository:
         use_https: bool,
         enabled: bool,
         sync_interval_minutes: int,
-        full_resync_interval_hours: int,
         username: str,
         password: str,
     ) -> NasServerValue:
@@ -76,7 +73,6 @@ class NasRepository:
         row.use_https = use_https
         row.enabled = enabled
         row.sync_interval_minutes = sync_interval_minutes
-        row.full_resync_interval_hours = full_resync_interval_hours
         row.updated_at = now
 
         credential = row.credential
@@ -156,5 +152,4 @@ class NasRepository:
             use_https=row.use_https,
             enabled=row.enabled,
             sync_interval_minutes=row.sync_interval_minutes,
-            full_resync_interval_hours=row.full_resync_interval_hours,
         )

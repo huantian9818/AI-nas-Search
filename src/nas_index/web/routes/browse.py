@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 
 from nas_index.models import Entry
@@ -10,7 +10,10 @@ from nas_index.repositories.entries import EntryRepository
 from nas_index.services.thumbnails import is_thumbnail_candidate
 from nas_index.types import UserAccess
 from nas_index.web.dependencies import get_session
-from nas_index.web.routes.access import current_access
+from nas_index.web.routes.access import (
+    access_login_redirect,
+    current_access,
+)
 
 router = APIRouter(prefix="/browse")
 
@@ -103,10 +106,7 @@ def browse(
 ):
     access = current_access(request)
     if access is None:
-        return RedirectResponse(
-            "/access",
-            status_code=303,
-        )
+        return access_login_redirect(request)
 
     path = _normalize_path(path)
     repository = EntryRepository(session)

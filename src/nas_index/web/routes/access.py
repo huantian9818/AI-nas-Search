@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -14,6 +15,24 @@ from nas_index.web.dependencies import get_session
 router = APIRouter()
 
 ACCESS_COOKIE_NAME = "nas_access"
+
+
+def _safe_next(value: str | None) -> str:
+    if not value:
+        return "/browse"
+    if not value.startswith("/") or value.startswith("//"):
+        return "/browse"
+    return value
+
+
+def access_login_redirect(request: Request) -> RedirectResponse:
+    target = request.url.path
+    if request.url.query:
+        target = f"{target}?{request.url.query}"
+    return RedirectResponse(
+        f"/access?next={quote(target, safe='')}",
+        status_code=303,
+    )
 
 
 @dataclass(frozen=True)
@@ -76,6 +95,7 @@ def _normalize_access_check_result(
 )
 def access_page(
     request: Request,
+    next: str = "/browse",
     session: Session = Depends(get_session),
 ):
     servers = NasRepository(session).list_enabled_servers()
@@ -86,6 +106,7 @@ def access_page(
             "servers": servers,
             "access": current_access(request),
             "error": None,
+            "next": _safe_next(next),
         },
     )
 
@@ -99,8 +120,10 @@ async def create_access(
     nas_id: int = Form(...),
     username: str = Form(...),
     password: str = Form(...),
+    next: str = Form("/browse"),
     session: Session = Depends(get_session),
 ):
+    safe_next = _safe_next(next)
     repository = NasRepository(session)
     server = repository.get_server(nas_id)
     servers = repository.list_enabled_servers()
@@ -112,6 +135,7 @@ async def create_access(
                 "servers": servers,
                 "access": current_access(request),
                 "error": "NAS 不存在",
+                "next": safe_next,
             },
             status_code=422,
         )
@@ -138,6 +162,7 @@ async def create_access(
                 "servers": servers,
                 "access": current_access(request),
                 "error": str(exc),
+                "next": safe_next,
             },
             status_code=401,
         )
@@ -149,6 +174,7 @@ async def create_access(
                 "servers": servers,
                 "access": current_access(request),
                 "error": "访问验证失败",
+                "next": safe_next,
             },
             status_code=502,
         )
@@ -160,13 +186,27 @@ async def create_access(
         qnap_sid=check_result.qnap_sid,
     )
     response = RedirectResponse(
-        "/browse",
+        safe_next,
         status_code=303,
     )
     response.set_cookie(
         ACCESS_COOKIE_NAME,
         token,
+        max_age=request.app.state.settings.user_access_ttl_seconds,
         httponly=True,
         samesite="lax",
     )
+    return response
+
+
+@router.post("/access/logout")
+def logout_current_user(request: Request):
+    request.app.state.access_store.delete(
+        request.cookies.get(ACCESS_COOKIE_NAME)
+    )
+    response = RedirectResponse(
+        "/",
+        status_code=303,
+    )
+    response.delete_cookie(ACCESS_COOKIE_NAME)
     return response

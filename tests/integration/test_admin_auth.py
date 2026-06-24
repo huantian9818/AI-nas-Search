@@ -17,7 +17,6 @@ def _create_nas(client, name: str = "Office") -> int:
             use_https=False,
             enabled=True,
             sync_interval_minutes=30,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         ).id
@@ -69,6 +68,12 @@ def test_dashboard_hides_sync_controls_from_non_admin(client):
 
 def test_dashboard_shows_sync_controls_to_admin(admin_client):
     nas_id = _create_nas(admin_client)
+    token = admin_client.app.state.access_store.create(
+        nas_id=nas_id,
+        username="alice",
+        share_paths=("/Public",),
+    )
+    admin_client.cookies.set("nas_access", token)
 
     response = admin_client.get("/")
 

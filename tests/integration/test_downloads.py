@@ -15,7 +15,6 @@ def _create_server(session: Session) -> int:
         use_https=False,
         enabled=True,
         sync_interval_minutes=15,
-        full_resync_interval_hours=24,
         username="indexer",
         password="secret",
     )
@@ -142,6 +141,23 @@ def test_browse_page_shows_download_link_for_files(
     assert response.status_code == 200
     assert "/downloads/" in response.text
     assert "下载" in response.text
+
+
+def test_browse_page_shows_select_all_control_for_batch_download(
+    client,
+    web_seeded_entries,
+):
+    response = client.get(
+        "/browse",
+        params={"path": "/Public"},
+    )
+
+    assert response.status_code == 200
+    assert 'data-batch-download-form' in response.text
+    assert 'data-select-all' in response.text
+    assert "全选" in response.text
+    assert 'data-entry-select' in response.text
+    assert 'data-batch-download-submit' in response.text
 
 
 def test_batch_download_redirects_same_directory_files_to_qnap(

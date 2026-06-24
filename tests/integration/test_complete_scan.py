@@ -96,7 +96,6 @@ async def test_real_qnap_adapter_and_scanner_index_complete_tree(
             use_https=False,
             enabled=True,
             sync_interval_minutes=30,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         ).id

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
 {% block title %}设置 - QNAP 文件索引{% endblock %}
 {% block content %}
-<div class="page settings-page">
+<div class="page compact-page settings-page">
   <section class="section-block settings-header">
     <div>
       <h1>NAS 管理</h1>
-      <p>集中管理 NAS 连接与同步策略、索引账号。</p>
+      <p>集中管理 NAS 连接与同步、索引账号。</p>
     </div>
     <p class="settings-warning">
       管理员索引账号密码会以明文保存在本机数据库中。
@@ -19,7 +19,9 @@
   <section class="section-block settings-board">
     <div class="settings-section-heading">
       <h2>已配置 NAS</h2>
-      <p class="plain-note">保存修改后，新配置会用于后续同步任务。</p>
+      <p class="plain-note">
+        修改连接信息后，需要重新测试连接才能保存。
+      </p>
     </div>
 
     {% if servers %}
@@ -27,110 +29,104 @@
         {% for server in servers %}
           <form method="post"
                 action="/settings/nas/{{ server.id }}"
-                class="nas-config">
+                class="nas-config"
+                data-nas-config-form>
+            <input type="hidden"
+                   name="nas_id"
+                   value="{{ server.id }}">
+
             <div class="nas-config-header">
               <div>
                 <h3>{{ server.name }}</h3>
-                <p>
-                  <code>{{ server.base_url }}:{{ server.port }}</code>
-                </p>
+                <code>{{ server.base_url }}:{{ server.port }}</code>
               </div>
               <span class="nas-status {% if server.enabled %}is-enabled{% endif %}">
                 {% if server.enabled %}已启用{% else %}已停用{% endif %}
               </span>
             </div>
 
-            <div class="settings-field-groups">
-              <fieldset class="settings-fieldset">
-                <legend>基本连接</legend>
-                <div class="settings-grid">
-                  <label>
-                    名称
-                    <input name="name" value="{{ server.name }}" required>
-                  </label>
-                  <label>
-                    主机
-                    <input name="host"
-                           value="{{ server.base_url }}"
-                           required>
-                  </label>
-                  <label>
-                    端口
-                    <input name="port"
-                           type="number"
-                           min="1"
-                           max="65535"
-                           value="{{ server.port }}"
-                           required>
-                  </label>
-                  <label class="checkbox-line settings-checkbox">
-                    <input name="use_https"
-                           type="checkbox"
-                           value="on"
-                           {% if server.use_https %}checked{% endif %}>
-                    使用 HTTPS
-                  </label>
-                </div>
-              </fieldset>
+            <div class="settings-fields-primary">
+              <label class="settings-field-name">
+                名称
+                <input name="name"
+                       value="{{ server.name }}"
+                       required>
+              </label>
+              <label class="settings-field-host">
+                主机
+                <input name="host"
+                       value="{{ server.base_url }}"
+                       data-connection-field
+                       required>
+              </label>
+              <label class="settings-field-port">
+                端口
+                <input name="port"
+                       type="number"
+                       min="1"
+                       max="65535"
+                       value="{{ server.port }}"
+                       data-connection-field
+                       required>
+              </label>
+            </div>
 
-              <fieldset class="settings-fieldset">
-                <legend>同步策略</legend>
-                <div class="settings-grid">
-                  <label class="checkbox-line settings-checkbox">
-                    <input name="enabled"
-                           type="checkbox"
-                           value="on"
-                           {% if server.enabled %}checked{% endif %}>
-                    启用同步
-                  </label>
-                  <label>
-                    同步间隔（分钟）
-                    <input name="sync_interval_minutes"
-                           type="number"
-                           min="1"
-                           value="{{ server.sync_interval_minutes }}"
-                           required>
-                  </label>
-                  <label>
-                    完整重扫间隔（小时）
-                    <input name="full_resync_interval_hours"
-                           type="number"
-                           min="1"
-                           value="{{ server.full_resync_interval_hours }}"
-                           required>
-                  </label>
-                </div>
-              </fieldset>
-
-              <fieldset class="settings-fieldset">
-                <legend>索引账号</legend>
-                <div class="settings-grid">
-                  <label>
-                    索引账号
-                    <input name="username"
-                           autocomplete="username"
-                           value="{{ credential_usernames.get(server.id, '') }}"
-                           required>
-                  </label>
-                  <label>
-                    密码
-                    <input name="password"
-                           type="password"
-                           autocomplete="new-password"
-                           placeholder="留空保留原密码">
-                  </label>
-                </div>
-              </fieldset>
+            <div class="settings-fields-secondary">
+              <label class="settings-field-username">
+                索引账号
+                <input name="username"
+                       autocomplete="username"
+                       value="{{ credential_usernames.get(server.id, '') }}"
+                       data-connection-field
+                       required>
+              </label>
+              <label class="settings-field-password">
+                密码
+                <input name="password"
+                       type="password"
+                       autocomplete="new-password"
+                       placeholder="留空保留原密码"
+                       data-connection-field>
+              </label>
+              <label class="settings-field-interval settings-interval-label">
+                同步间隔（分钟）
+                <input name="sync_interval_minutes"
+                       type="number"
+                       min="1"
+                       value="{{ server.sync_interval_minutes }}"
+                       required>
+              </label>
             </div>
 
             <div class="settings-actions">
-              <button type="submit">保存</button>
+              <label class="checkbox-line settings-checkbox">
+                <input name="enabled"
+                       type="checkbox"
+                       value="on"
+                       {% if server.enabled %}checked{% endif %}>
+                启用同步
+              </label>
+              <label class="checkbox-line settings-checkbox">
+                <input name="use_https"
+                       type="checkbox"
+                       value="on"
+                       data-connection-field
+                       {% if server.use_https %}checked{% endif %}>
+                HTTPS
+              </label>
               <button type="button"
-                      hx-post="/settings/nas/{{ server.id }}/test"
-                      hx-target="#connection-result"
-                      hx-swap="innerHTML">
+                      data-test-connection>
                 测试连接
               </button>
+              <button type="submit"
+                      data-save-config
+                      disabled>
+                保存
+              </button>
+              <span class="settings-test-result"
+                    data-connection-test-result
+                    role="status"
+                    aria-live="polite"></span>
             </div>
           </form>
         {% endfor %}
@@ -143,92 +139,164 @@
   <section class="section-block settings-board">
     <div class="settings-section-heading">
       <h2>新增 NAS</h2>
-      <p class="plain-note">新 NAS 保存后会出现在概览页，可手动触发同步。</p>
+      <p class="plain-note">
+        使用当前表单测试成功后，才能保存新 NAS。
+      </p>
     </div>
 
-    <form method="post" action="/settings/nas" class="nas-config nas-config-new">
-      <div class="settings-field-groups">
-        <fieldset class="settings-fieldset">
-          <legend>基本连接</legend>
-          <div class="settings-grid">
-            <label>
-              名称
-              <input name="name" placeholder="Office NAS" required>
-            </label>
-            <label>
-              主机
-              <input name="host" placeholder="nas.local" required>
-            </label>
-            <label>
-              端口
-              <input name="port"
-                     type="number"
-                     min="1"
-                     max="65535"
-                     value="8080"
-                     required>
-            </label>
-            <label class="checkbox-line settings-checkbox">
-              <input name="use_https" type="checkbox" value="on">
-              使用 HTTPS
-            </label>
-          </div>
-        </fieldset>
+    <form method="post"
+          action="/settings/nas"
+          class="nas-config nas-config-new"
+          data-nas-config-form>
+      <div class="settings-fields-primary">
+        <label class="settings-field-name">
+          名称
+          <input name="name"
+                 placeholder="Office NAS"
+                 required>
+        </label>
+        <label class="settings-field-host">
+          主机
+          <input name="host"
+                 placeholder="nas.local"
+                 data-connection-field
+                 required>
+        </label>
+        <label class="settings-field-port">
+          端口
+          <input name="port"
+                 type="number"
+                 min="1"
+                 max="65535"
+                 value="8080"
+                 data-connection-field
+                 required>
+        </label>
+      </div>
 
-        <fieldset class="settings-fieldset">
-          <legend>同步策略</legend>
-          <div class="settings-grid">
-            <label class="checkbox-line settings-checkbox">
-              <input name="enabled" type="checkbox" value="on" checked>
-              启用同步
-            </label>
-            <label>
-              同步间隔（分钟）
-              <input name="sync_interval_minutes"
-                     type="number"
-                     min="1"
-                     value="30"
-                     required>
-            </label>
-            <label>
-              完整重扫间隔（小时）
-              <input name="full_resync_interval_hours"
-                     type="number"
-                     min="1"
-                     value="24"
-                     required>
-            </label>
-          </div>
-        </fieldset>
-
-        <fieldset class="settings-fieldset">
-          <legend>索引账号</legend>
-          <div class="settings-grid">
-            <label>
-              索引账号
-              <input name="username"
-                     placeholder="indexer"
-                     autocomplete="username"
-                     required>
-            </label>
-            <label>
-              密码
-              <input name="password"
-                     type="password"
-                     placeholder="索引账号密码"
-                     autocomplete="new-password"
-                     required>
-            </label>
-          </div>
-        </fieldset>
+      <div class="settings-fields-secondary">
+        <label class="settings-field-username">
+          索引账号
+          <input name="username"
+                 placeholder="indexer"
+                 autocomplete="username"
+                 data-connection-field
+                 required>
+        </label>
+        <label class="settings-field-password">
+          密码
+          <input name="password"
+                 type="password"
+                 placeholder="索引账号密码"
+                 autocomplete="new-password"
+                 data-connection-field
+                 required>
+        </label>
+        <label class="settings-field-interval settings-interval-label">
+          同步间隔（分钟）
+          <input name="sync_interval_minutes"
+                 type="number"
+                 min="1"
+                 value="30"
+                 required>
+        </label>
       </div>
 
       <div class="settings-actions">
-        <button type="submit">新增</button>
+        <label class="checkbox-line settings-checkbox">
+          <input name="enabled"
+                 type="checkbox"
+                 value="on"
+                 checked>
+          启用同步
+        </label>
+        <label class="checkbox-line settings-checkbox">
+          <input name="use_https"
+                 type="checkbox"
+                 value="on"
+                 data-connection-field>
+          HTTPS
+        </label>
+        <button type="button"
+                data-test-connection>
+          测试连接
+        </button>
+        <button type="submit"
+                data-save-config
+                disabled>
+          新增
+        </button>
+        <span class="settings-test-result"
+              data-connection-test-result
+              role="status"
+              aria-live="polite"></span>
       </div>
     </form>
   </section>
-
-  <div id="connection-result" class="settings-result"></div>
 </div>
+
+<script>
+  (() => {
+    const forms = document.querySelectorAll("[data-nas-config-form]");
+
+    forms.forEach((form) => {
+      const connectionFields = form.querySelectorAll(
+        "[data-connection-field]"
+      );
+      const testButton = form.querySelector("[data-test-connection]");
+      const saveButton = form.querySelector("[data-save-config]");
+      const result = form.querySelector(
+        "[data-connection-test-result]"
+      );
+
+      const invalidateTest = () => {
+        if (result) {
+          result.replaceChildren();
+        }
+        if (saveButton) {
+          saveButton.disabled = true;
+        }
+      };
+
+      connectionFields.forEach((field) => {
+        field.addEventListener("input", invalidateTest);
+        field.addEventListener("change", invalidateTest);
+      });
+
+      testButton?.addEventListener("click", async () => {
+        if (!form.reportValidity()) {
+          return;
+        }
+        invalidateTest();
+        testButton.disabled = true;
+        if (result) {
+          result.textContent = "测试中...";
+        }
+
+        try {
+          const response = await fetch("/settings/nas/test", {
+            method: "POST",
+            body: new FormData(form),
+          });
+          const html = await response.text();
+          if (result) {
+            result.innerHTML = html;
+          }
+          const token = result?.querySelector(
+            'input[name="connection_test_token"]'
+          );
+          if (saveButton) {
+            saveButton.disabled = !token;
+          }
+        } catch (_error) {
+          if (result) {
+            result.textContent = "连接测试失败";
+          }
+        } finally {
+          testButton.disabled = false;
+        }
+      });
+    });
+  })();
+</script>
 {% endblock %}

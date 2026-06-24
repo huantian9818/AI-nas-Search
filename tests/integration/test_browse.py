@@ -177,7 +177,6 @@ def test_thumbnail_route_rejects_entries_outside_access(client):
             use_https=False,
             enabled=True,
             sync_interval_minutes=15,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         )
@@ -245,7 +244,6 @@ def test_thumbnail_route_returns_allowed_cached_image(
             use_https=False,
             enabled=True,
             sync_interval_minutes=15,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         )
@@ -313,7 +311,6 @@ def test_thumbnail_route_releases_database_session_before_thumbnail_fetch(
             use_https=False,
             enabled=True,
             sync_interval_minutes=15,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         )

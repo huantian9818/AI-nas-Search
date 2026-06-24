@@ -20,7 +20,6 @@ def test_startup_marks_orphaned_running_scan_interrupted(
             use_https=False,
             enabled=True,
             sync_interval_minutes=30,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         ).id

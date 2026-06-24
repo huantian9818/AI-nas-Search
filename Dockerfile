@@ -14,8 +14,8 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock ./
 COPY src ./src
 
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir --upgrade pip -i https://mirrors.aliyun.com/pypi/simple/ \
+    && pip install --no-cache-dir -e . -i https://mirrors.aliyun.com/pypi/simple/
 
 EXPOSE 8001
 

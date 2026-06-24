@@ -16,7 +16,7 @@ class AppSettings(BaseSettings):
     scan_skip_recycle: bool = True
     qnap_timeout_seconds: float = 20.0
     qnap_retry_attempts: int = 3
-    user_access_ttl_seconds: int = 900
+    user_access_ttl_seconds: int = 30 * 24 * 60 * 60
     sync_scheduler_poll_seconds: float = 10.0
     thumbnail_cache_dir: Path = Path("data/thumbnails")
     admin_password: str | None = None

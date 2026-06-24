@@ -13,7 +13,6 @@ def test_create_and_update_nas_server(database):
             use_https=False,
             enabled=True,
             sync_interval_minutes=15,
-            full_resync_interval_hours=12,
             username="indexer",
             password="secret",
         )
@@ -39,7 +38,6 @@ def test_create_and_update_nas_server(database):
             use_https=True,
             enabled=False,
             sync_interval_minutes=60,
-            full_resync_interval_hours=48,
             username="new-indexer",
             password="",
         )
@@ -63,7 +61,6 @@ def test_list_enabled_servers(database):
             use_https=False,
             enabled=True,
             sync_interval_minutes=30,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         )
@@ -74,7 +71,6 @@ def test_list_enabled_servers(database):
             use_https=False,
             enabled=False,
             sync_interval_minutes=30,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         )

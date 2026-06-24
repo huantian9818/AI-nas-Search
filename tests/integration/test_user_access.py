@@ -31,7 +31,6 @@ def _seed_nas_with_two_shares(client) -> int:
             use_https=False,
             enabled=True,
             sync_interval_minutes=15,
-            full_resync_interval_hours=24,
             username="indexer",
             password="secret",
         )
@@ -85,7 +84,28 @@ def test_browse_redirects_to_access_without_session(client):
     response = client.get("/browse", follow_redirects=False)
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/access"
+    assert response.headers["location"] == "/access?next=%2Fbrowse"
+
+
+def test_dashboard_redirects_to_access_without_session(client):
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/access?next=%2F"
+
+
+def test_search_redirect_preserves_query_for_login(client):
+    response = client.get(
+        "/search",
+        params={"q": "苹果"},
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"].startswith(
+        "/access?next="
+    )
+    assert "%2Fsearch%3Fq%3D" in response.headers["location"]
 
 
 def test_access_page_without_servers_tells_user_to_contact_admin(client):
@@ -129,17 +149,21 @@ def test_access_login_filters_browse_and_search_by_allowed_shares(
             "nas_id": str(nas_id),
             "username": "alice",
             "password": "pw",
+            "next": "/search?q=budget",
         },
         follow_redirects=False,
     )
 
     assert response.status_code == 303
-    assert response.headers["location"] == "/browse"
+    assert response.headers["location"] == "/search?q=budget"
+    set_cookie = response.headers["set-cookie"].lower()
+    assert "max-age=2592000" in set_cookie
 
     browse_response = client.get("/browse")
     assert browse_response.status_code == 200
     assert "Public" in browse_response.text
     assert "Finance" not in browse_response.text
+    assert "退出当前用户" in browse_response.text
 
     search_response = client.get(
         "/search",
@@ -161,3 +185,42 @@ def test_access_login_filters_browse_and_search_by_allowed_shares(
     }
     assert "public-budget.xlsx" in payload_names
     assert "finance-budget.xlsx" not in payload_names
+
+
+def test_logout_current_user_deletes_session_and_cookie(client):
+    token = client.app.state.access_store.create(
+        nas_id=1,
+        username="alice",
+        share_paths=("/Public",),
+    )
+    client.cookies.set("nas_access", token)
+
+    response = client.post(
+        "/access/logout",
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/"
+    assert client.app.state.access_store.get(token) is None
+    assert "nas_access=" in response.headers["set-cookie"]
+    assert "max-age=0" in response.headers["set-cookie"].lower()
+
+
+def test_navigation_hides_logout_without_user_session(client):
+    response = client.get("/access")
+
+    assert response.status_code == 200
+    assert "退出当前用户" not in response.text
+    assert 'href="/access"' not in response.text
+
+
+def test_navigation_hides_access_link_with_user_session(
+    client,
+    web_public_access,
+):
+    response = client.get("/browse")
+
+    assert response.status_code == 200
+    assert 'href="/access"' not in response.text
+    assert "退出当前用户" in response.text

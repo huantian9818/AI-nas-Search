@@ -27,9 +27,18 @@
       {% if listing.items %}
         <form class="batch-download-form"
               method="post"
-              action="/downloads/batch">
+              action="/downloads/batch"
+              data-batch-download-form>
           <div class="browse-actions">
-            <button type="submit">批量下载</button>
+            <label class="select-all-control">
+              <input type="checkbox" data-select-all>
+              <span>全选</span>
+            </label>
+            <button type="submit"
+                    data-batch-download-submit
+                    disabled>
+              批量下载
+            </button>
           </div>
           <div class="browse-grid">
             {% for item in listing.items %}
@@ -48,6 +57,7 @@
                     <input type="checkbox"
                            name="entry_ids"
                            value="{{ item.id }}"
+                           data-entry-select
                            aria-label="选择 {{ item.name }}">
                   </label>
                 {% endif %}
@@ -98,4 +108,59 @@
     </section>
   </div>
 </div>
+<script>
+  (() => {
+    const form = document.querySelector("[data-batch-download-form]");
+    if (!form) {
+      return;
+    }
+
+    const selectAll = form.querySelector("[data-select-all]");
+    const submit = form.querySelector("[data-batch-download-submit]");
+    const entries = Array.from(
+      form.querySelectorAll("[data-entry-select]")
+    );
+
+    const syncSelectionState = () => {
+      const selectedCount = entries.filter((entry) => entry.checked).length;
+
+      if (selectAll) {
+        selectAll.checked = (
+          entries.length > 0 &&
+          selectedCount === entries.length
+        );
+        selectAll.indeterminate = (
+          selectedCount > 0 &&
+          selectedCount < entries.length
+        );
+        selectAll.disabled = entries.length === 0;
+      }
+
+      if (submit) {
+        submit.disabled = selectedCount === 0;
+      }
+    };
+
+    if (selectAll) {
+      selectAll.addEventListener("change", () => {
+        entries.forEach((entry) => {
+          entry.checked = selectAll.checked;
+        });
+        syncSelectionState();
+      });
+    }
+
+    entries.forEach((entry) => {
+      entry.addEventListener("change", syncSelectionState);
+    });
+
+    form.addEventListener("submit", (event) => {
+      if (!entries.some((entry) => entry.checked)) {
+        event.preventDefault();
+      }
+    });
+
+    syncSelectionState();
+  })();
+</script>
 {% endblock %}

@@ -14,6 +14,10 @@ from nas_index.web.routes.admin import admin_login_redirect
 
 router = APIRouter()
 
+CONNECTION_TEST_REQUIRED = (
+    "请先使用当前连接信息测试成功后再保存"
+)
+
 
 def normalize_base_url(
     host: str,
@@ -57,6 +61,50 @@ def _settings_context(
     }
 
 
+def _connection_from_form(
+    repository: NasRepository,
+    *,
+    nas_id: int | None,
+    host: str,
+    port: int,
+    use_https: bool,
+    username: str,
+    password: str,
+) -> NasConnection:
+    resolved_password = password
+    if not resolved_password and nas_id is not None:
+        credential = repository.get_credential(nas_id)
+        if credential is not None:
+            resolved_password = credential.password
+    if not resolved_password:
+        raise ValueError("首次保存时必须输入索引账号密码")
+    return NasConnection(
+        base_url=normalize_base_url(host, use_https),
+        port=port,
+        use_https=use_https,
+        username=username.strip(),
+        password=resolved_password,
+    )
+
+
+def _settings_error(
+    request: Request,
+    repository: NasRepository,
+    message: str,
+    *,
+    status_code: int = 422,
+):
+    return request.app.state.templates.TemplateResponse(
+        request=request,
+        name="settings.html",
+        context=_settings_context(
+            repository,
+            error=message,
+        ),
+        status_code=status_code,
+    )
+
+
 @router.get(
     "/settings",
     response_class=HTMLResponse,
@@ -86,9 +134,9 @@ def create_nas(
     use_https: bool = Form(False),
     enabled: bool = Form(False),
     sync_interval_minutes: int = Form(..., ge=1),
-    full_resync_interval_hours: int = Form(..., ge=1),
     username: str = Form(...),
     password: str = Form(""),
+    connection_test_token: str = Form(""),
     session: Session = Depends(get_session),
 ):
     redirect = admin_login_redirect(request, next_path="/settings")
@@ -97,6 +145,24 @@ def create_nas(
 
     repository = NasRepository(session)
     try:
+        connection = _connection_from_form(
+            repository,
+            nas_id=None,
+            host=host,
+            port=port,
+            use_https=use_https,
+            username=username,
+            password=password,
+        )
+        if not request.app.state.connection_test_store.matches(
+            connection_test_token,
+            connection,
+        ):
+            return _settings_error(
+                request,
+                repository,
+                CONNECTION_TEST_REQUIRED,
+            )
         repository.create_server(
             name=name,
             base_url=normalize_base_url(
@@ -107,28 +173,86 @@ def create_nas(
             use_https=use_https,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
-            full_resync_interval_hours=(
-                full_resync_interval_hours
-            ),
             username=username,
             password=password,
         )
     except ValueError as exc:
-        return request.app.state.templates.TemplateResponse(
-            request=request,
-            name="settings.html",
-            context=_settings_context(
-                repository,
-                error=str(exc),
-            ),
-            status_code=422,
+        return _settings_error(
+            request,
+            repository,
+            str(exc),
         )
     session.commit()
+    request.app.state.connection_test_store.delete(
+        connection_test_token
+    )
     return RedirectResponse(
         "/settings",
         status_code=303,
     )
 
+
+@router.post(
+    "/settings/nas/test",
+    response_class=HTMLResponse,
+)
+async def test_nas_form_connection(
+    request: Request,
+    nas_id: int | None = Form(None),
+    host: str = Form(...),
+    port: int = Form(..., ge=1, le=65535),
+    use_https: bool = Form(False),
+    username: str = Form(...),
+    password: str = Form(""),
+    session: Session = Depends(get_session),
+):
+    redirect = admin_login_redirect(request, next_path="/settings")
+    if redirect is not None:
+        return redirect
+
+    repository = NasRepository(session)
+    try:
+        connection = _connection_from_form(
+            repository,
+            nas_id=nas_id,
+            host=host,
+            port=port,
+            use_https=use_https,
+            username=username,
+            password=password,
+        )
+        share_count = await test_connection(connection)
+        token = request.app.state.connection_test_store.create(
+            connection
+        )
+        context = {
+            "success": True,
+            "message": (
+                "连接成功，可访问 "
+                f"{share_count} 个共享目录"
+            ),
+            "connection_test_token": token,
+        }
+    except QnapError as exc:
+        context = {
+            "success": False,
+            "message": str(exc),
+        }
+    except ValueError as exc:
+        context = {
+            "success": False,
+            "message": str(exc),
+        }
+    except Exception:
+        context = {
+            "success": False,
+            "message": "连接测试失败",
+        }
+    return request.app.state.templates.TemplateResponse(
+        request=request,
+        name="partials/connection_result.html",
+        context=context,
+    )
 
 @router.post("/settings/nas/{nas_id}")
 def update_nas(
@@ -140,9 +264,9 @@ def update_nas(
     use_https: bool = Form(False),
     enabled: bool = Form(False),
     sync_interval_minutes: int = Form(..., ge=1),
-    full_resync_interval_hours: int = Form(..., ge=1),
     username: str = Form(...),
     password: str = Form(""),
+    connection_test_token: str = Form(""),
     session: Session = Depends(get_session),
 ):
     redirect = admin_login_redirect(request, next_path="/settings")
@@ -151,6 +275,24 @@ def update_nas(
 
     repository = NasRepository(session)
     try:
+        connection = _connection_from_form(
+            repository,
+            nas_id=nas_id,
+            host=host,
+            port=port,
+            use_https=use_https,
+            username=username,
+            password=password,
+        )
+        if not request.app.state.connection_test_store.matches(
+            connection_test_token,
+            connection,
+        ):
+            return _settings_error(
+                request,
+                repository,
+                CONNECTION_TEST_REQUIRED,
+            )
         repository.update_server(
             nas_id,
             name=name,
@@ -162,23 +304,19 @@ def update_nas(
             use_https=use_https,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
-            full_resync_interval_hours=(
-                full_resync_interval_hours
-            ),
             username=username,
             password=password,
         )
     except (LookupError, ValueError) as exc:
-        return request.app.state.templates.TemplateResponse(
-            request=request,
-            name="settings.html",
-            context=_settings_context(
-                repository,
-                error=str(exc),
-            ),
-            status_code=422,
+        return _settings_error(
+            request,
+            repository,
+            str(exc),
         )
     session.commit()
+    request.app.state.connection_test_store.delete(
+        connection_test_token
+    )
     return RedirectResponse(
         "/settings",
         status_code=303,
@@ -243,56 +381,6 @@ async def connection_test(
         return redirect
 
     config = ConfigRepository(session).get()
-    if config is None:
-        context = {
-            "success": False,
-            "message": "请先保存 NAS 设置",
-        }
-    else:
-        try:
-            share_count = await test_connection(
-                config
-            )
-            context = {
-                "success": True,
-                "message": (
-                    "连接成功，可访问 "
-                    f"{share_count} 个共享目录"
-                ),
-            }
-        except QnapError as exc:
-            context = {
-                "success": False,
-                "message": str(exc),
-            }
-        except Exception:
-            context = {
-                "success": False,
-                "message": "连接测试失败",
-            }
-    return request.app.state.templates.TemplateResponse(
-        request=request,
-        name="partials/connection_result.html",
-        context=context,
-    )
-
-
-@router.post(
-    "/settings/nas/{nas_id}/test",
-    response_class=HTMLResponse,
-)
-async def nas_connection_test(
-    request: Request,
-    nas_id: int,
-    session: Session = Depends(get_session),
-):
-    redirect = admin_login_redirect(request, next_path="/settings")
-    if redirect is not None:
-        return redirect
-
-    config = NasRepository(session).connection_for_indexer(
-        nas_id
-    )
     if config is None:
         context = {
             "success": False,

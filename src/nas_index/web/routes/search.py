@@ -7,7 +7,7 @@ from typing import Callable
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse
 from markupsafe import Markup, escape
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -27,7 +27,10 @@ from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
 from nas_index.web.routes.browse import _normalize_path
 from nas_index.web.dependencies import get_session
-from nas_index.web.routes.access import current_access
+from nas_index.web.routes.access import (
+    access_login_redirect,
+    current_access,
+)
 
 router = APIRouter(prefix="/search")
 
@@ -450,10 +453,7 @@ def search(
 ):
     access = current_access(request)
     if access is None:
-        return RedirectResponse(
-            "/access",
-            status_code=303,
-        )
+        return access_login_redirect(request)
 
     query = q.strip()
     repository = EntryRepository(session)

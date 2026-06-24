@@ -1,6 +1,7 @@
 [app]
 admin_password = "change-me"
 scan_concurrency = 4
+user_access_ttl_seconds = 2592000
 
 [ai]
 api_key = ""

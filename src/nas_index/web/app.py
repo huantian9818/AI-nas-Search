@@ -19,6 +19,7 @@ from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
 from nas_index.services.admin import AdminSessionStore
 from nas_index.services.access import AccessSessionStore
+from nas_index.services.connection_tests import ConnectionTestStore
 from nas_index.services.process_monitor import ProcessMonitor
 from nas_index.services.scan_rate import ScanRateTracker
 from nas_index.services.scanner import Scanner
@@ -68,6 +69,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     app.state.admin_store = AdminSessionStore(
         ttl_seconds=settings.admin_session_ttl_seconds
     )
+    app.state.connection_test_store = ConnectionTestStore(
+        ttl_seconds=300
+    )
     app.state.search_summarizer = OpenAIChatSearchSummarizer(settings)
     app.state.process_monitor = ProcessMonitor()
     app.state.scan_rate_tracker = ScanRateTracker()
@@ -89,6 +93,9 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
     )
     app.state.templates.env.globals["is_admin"] = (
         admin_routes.current_admin
+    )
+    app.state.templates.env.globals["current_access"] = (
+        access_routes.current_access
     )
     app.state.templates.env.globals["format_time"] = format_beijing
     app.state.templates.env.globals["static_version"] = (

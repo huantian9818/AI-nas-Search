@@ -24,7 +24,6 @@ class NasServerValue:
     use_https: bool
     enabled: bool
     sync_interval_minutes: int
-    full_resync_interval_hours: int
 
     def to_connection(
         self,

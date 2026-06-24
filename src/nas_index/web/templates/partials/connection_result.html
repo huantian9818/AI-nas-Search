@@ -1,1 +1,6 @@
-<p>{{ "连接成功：" if success else "连接失败：" }}{{ message }}</p>
+{% if success and connection_test_token %}
+  <input type="hidden"
+         name="connection_test_token"
+         value="{{ connection_test_token }}">
+{% endif %}
+<p>{{ message }}</p>

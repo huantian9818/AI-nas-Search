@@ -6,6 +6,15 @@ from nas_index.models import SyncRun
 from nas_index.repositories.nas import NasRepository
 
 
+def _grant_access(client, nas_id: int) -> None:
+    token = client.app.state.access_store.create(
+        nas_id=nas_id,
+        username="alice",
+        share_paths=("/Public",),
+    )
+    client.cookies.set("nas_access", token)
+
+
 def _create_nas(session: Session, name: str) -> int:
     return NasRepository(session).create_server(
         name=name,
@@ -14,7 +23,6 @@ def _create_nas(session: Session, name: str) -> int:
         use_https=False,
         enabled=True,
         sync_interval_minutes=30,
-        full_resync_interval_hours=24,
         username="indexer",
         password="secret",
     ).id
@@ -36,6 +44,7 @@ def test_dashboard_displays_per_nas_scan_controls(admin_client):
         office_id = _create_nas(session, "Office")
         lab_id = _create_nas(session, "Lab")
         session.commit()
+    _grant_access(admin_client, office_id)
 
     response = admin_client.get("/")
 
@@ -74,6 +83,7 @@ def test_dashboard_displays_last_successful_sync(client):
             )
         )
         session.commit()
+    _grant_access(client, nas_id)
 
     response = client.get("/")
 

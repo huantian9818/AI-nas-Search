@@ -47,7 +47,6 @@ def create_nas(session: Session) -> int:
         use_https=False,
         enabled=True,
         sync_interval_minutes=30,
-        full_resync_interval_hours=24,
         username="indexer",
         password="secret",
     ).id

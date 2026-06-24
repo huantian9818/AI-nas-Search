@@ -1,4 +1,8 @@
-from nas_index.config import load_settings
+from nas_index.config import AppSettings, load_settings
+
+
+def test_default_user_access_session_lasts_thirty_days():
+    assert AppSettings().user_access_ttl_seconds == 30 * 24 * 60 * 60
 
 
 def test_load_settings_reads_local_toml_config(tmp_path, monkeypatch):

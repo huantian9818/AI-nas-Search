@@ -20,6 +20,7 @@
   <section class="section-block">
     {% if servers %}
       <form method="post" action="/access" class="stack-form">
+        <input type="hidden" name="next" value="{{ next }}">
         <label>
           NAS
           <select name="nas_id" required>

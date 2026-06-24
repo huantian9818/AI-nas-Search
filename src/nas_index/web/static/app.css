@@ -57,6 +57,11 @@ code {
   display: flex;
   gap: 16px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.nav-action-form {
+  display: inline-flex;
 }
 
 .page-shell {
@@ -373,6 +378,22 @@ td {
   flex-wrap: wrap;
 }
 
+.select-all-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.select-all-control input {
+  margin: 0;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .browse-tile {
   display: grid;
   grid-template-rows: 20px 96px 34px 18px;
@@ -471,13 +492,14 @@ td {
 }
 
 .settings-page {
-  gap: 28px;
+  gap: 18px;
+  font-size: 14px;
 }
 
 .settings-header {
   grid-template-columns: minmax(0, 1fr) minmax(220px, 340px);
   align-items: start;
-  gap: 24px;
+  gap: 16px;
 }
 
 .settings-warning {
@@ -487,7 +509,7 @@ td {
 }
 
 .settings-board {
-  gap: 14px;
+  gap: 10px;
 }
 
 .settings-section-heading {
@@ -497,13 +519,16 @@ td {
 
 .nas-config-list {
   display: grid;
-  gap: 16px;
+  gap: 12px;
+  justify-items: start;
 }
 
 .nas-config {
   display: grid;
-  gap: 16px;
-  padding: 16px;
+  gap: 10px;
+  width: max-content;
+  max-width: 100%;
+  padding: 12px 14px;
   border: 1px solid #111;
   border-radius: 6px;
 }
@@ -515,77 +540,105 @@ td {
 .nas-config-header {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 20px;
   align-items: start;
 }
 
 .nas-config-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
 }
 
 .nas-status {
   flex: 0 0 auto;
   color: #555;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .nas-status.is-enabled {
   color: #116329;
 }
 
-.settings-field-groups {
+.settings-fields-primary,
+.settings-fields-secondary {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 16px;
+  gap: 18px;
+  align-items: end;
 }
 
-.settings-fieldset {
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  display: grid;
-  gap: 10px;
-  align-content: start;
+.settings-fields-primary {
+  grid-template-columns: 100px 140px 60px;
 }
 
-.settings-fieldset legend {
-  padding: 0 0 2px;
-  font-weight: 700;
+.settings-fields-secondary {
+  grid-template-columns: 100px 140px 130px;
 }
 
-.settings-grid {
-  display: grid;
-  gap: 10px;
+.settings-field-name,
+.settings-field-username {
+  width: 100px;
 }
 
-.settings-page input:not([type="checkbox"]),
-.settings-page select {
-  max-width: none;
+.settings-field-host,
+.settings-field-password {
+  width: 140px;
+}
+
+.settings-field-port {
+  width: 60px;
+}
+
+.settings-field-interval {
+  width: 130px;
+}
+
+.settings-field-name input,
+.settings-field-username input {
+  width: 100px;
+}
+
+.settings-field-host input,
+.settings-field-password input {
+  width: 140px;
+}
+
+.settings-field-port input {
+  width: 60px;
+}
+
+.settings-field-interval input {
+  width: 100px;
+}
+
+.settings-interval-label {
+  white-space: nowrap;
 }
 
 .settings-checkbox {
-  min-height: 35px;
-  align-content: end;
+  min-height: 0;
 }
 
 .settings-actions {
   display: flex;
-  gap: 14px;
+  gap: 12px;
   flex-wrap: wrap;
   align-items: center;
-  padding-top: 2px;
+  min-height: 24px;
+}
+
+.settings-test-result {
+  color: #444;
+  font-size: 12px;
+}
+
+.settings-test-result p {
+  margin: 0;
 }
 
 .settings-empty {
-  padding: 16px;
+  padding: 10px 12px;
   border: 1px dashed #999;
   color: #444;
-}
-
-.settings-result:empty {
-  display: none;
 }
 
 .search-breadcrumb {
@@ -659,11 +712,18 @@ td {
   }
 
   .nas-config {
+    width: 100%;
     padding: 12px;
   }
 
   .nas-config-header {
     display: grid;
     gap: 6px;
+  }
+
+  .settings-fields-primary,
+  .settings-fields-secondary {
+    grid-template-columns: 1fr;
+    gap: 8px;
   }
 }

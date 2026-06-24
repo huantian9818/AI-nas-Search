@@ -42,7 +42,8 @@ class NasServer(Base):
     use_https: Mapped[bool] = mapped_column(Boolean)
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
-    full_resync_interval_hours: Mapped[int] = mapped_column(
+    legacy_full_resync_interval_hours: Mapped[int] = mapped_column(
+        "full_resync_interval_hours",
         Integer,
         default=24,
     )
@@ -63,10 +64,6 @@ class NasServer(Base):
         CheckConstraint(
             "sync_interval_minutes >= 1",
             name="nas_server_sync_interval_positive",
-        ),
-        CheckConstraint(
-            "full_resync_interval_hours >= 1",
-            name="nas_server_full_resync_interval_positive",
         ),
     )
 

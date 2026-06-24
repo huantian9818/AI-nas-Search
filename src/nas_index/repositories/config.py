@@ -39,7 +39,6 @@ class ConfigRepository:
                 use_https=value.use_https,
                 enabled=True,
                 sync_interval_minutes=30,
-                full_resync_interval_hours=24,
                 username=value.username,
                 password=value.password,
             )
@@ -66,7 +65,6 @@ class ConfigRepository:
             use_https=value.use_https,
             enabled=True,
             sync_interval_minutes=30,
-            full_resync_interval_hours=24,
             username=value.username,
             password=password,
         )
