@@ -22,6 +22,7 @@ from nas_index.services.search_summary import SearchSummaryPayloadError
 from nas_index.services.search_summary import SearchSummaryUnavailable
 from nas_index.services.search_summary import load_search_summary_payload
 from nas_index.services.search_summary import sign_search_summary_payload
+from nas_index.services.thumbnails import is_thumbnail_candidate
 from nas_index.time import format_beijing
 from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
@@ -186,6 +187,18 @@ def _select_result(
     return items[0]
 
 
+def _requested_selected_result(
+    items: list[Entry],
+    selected_id: int | None,
+) -> Entry | None:
+    if selected_id is None:
+        return None
+    for item in items:
+        if item.id == selected_id:
+            return item
+    return None
+
+
 def _focus_directory_path(
     entry: Entry,
 ) -> str:
@@ -313,6 +326,7 @@ def _tree_context(
     items: list[Entry],
     selected_result: Entry | None,
     access: UserAccess,
+    selected_id: int | None,
 ) -> tuple[list[SearchTreeNode], str]:
     if selected_result is None:
         return [], "/"
@@ -364,7 +378,7 @@ def _tree_context(
         ),
         result_files_by_parent=result_files_by_parent,
         result_ids=result_ids,
-        selected_id=selected_result.id,
+        selected_id=selected_id,
     )
     return tree_nodes, current_path
 
@@ -473,10 +487,14 @@ def search(
         results.items,
         selected,
     )
+    requested_selected = _requested_selected_result(
+        results.items,
+        selected,
+    )
     result_groups = _group_results(
         results.items,
-        selected_result.id
-        if selected_result is not None
+        requested_selected.id
+        if requested_selected is not None
         else None,
     )
     selected_group = next(
@@ -492,6 +510,9 @@ def search(
         results.items,
         selected_result,
         access,
+        requested_selected.id
+        if requested_selected is not None
+        else None,
     )
     summary_payload = None
     if results.total:
@@ -514,11 +535,12 @@ def search(
             "query": query,
             "results": results,
             "selected": (
-                selected_result.id
-                if selected_result is not None
+                requested_selected.id
+                if requested_selected is not None
                 else None
             ),
             "selected_result": selected_result,
+            "requested_selected": requested_selected,
             "selected_result_breadcrumbs": (
                 _breadcrumb_parts(
                     selected_result.full_path
@@ -549,6 +571,7 @@ def search(
             ),
             "format_size": _format_size,
             "format_modified": _format_modified,
+            "is_thumbnail_candidate": is_thumbnail_candidate,
         },
     )
 

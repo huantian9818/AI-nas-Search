@@ -3,9 +3,19 @@
 <ul class="tree-list{% if nested %} tree-list-nested{% endif %}">
   {% for node in nodes %}
     {% set is_directory = node.entry.entry_type == "directory" %}
+    {% if is_directory %}
+      {% set browse_href = '/browse?path=' ~ (node.entry.full_path | urlencode) %}
+    {% else %}
+      {% set browse_href = '/browse?path=' ~ (node.entry.parent_path | urlencode) ~ '&selected=' ~ node.entry.id %}
+    {% endif %}
     <li class="tree-item{% if loop.last %} is-last{% endif %}">
       <a class="tree-link{% if node.is_selected or node.is_current %} is-current{% elif node.is_ancestor %} is-ancestor{% endif %}"
-         href="{% if is_directory %}/browse?path={{ node.entry.full_path | urlencode }}{% else %}/browse?path={{ node.entry.parent_path | urlencode }}&amp;selected={{ node.entry.id }}{% endif %}">
+         href="{% if is_directory %}{{ browse_href }}{% else %}/search?q={{ query | urlencode }}&amp;selected={{ node.entry.id }}{% endif %}"
+         {% if not is_directory %}
+           data-search-preview-trigger
+           data-entry-id="{{ node.entry.id }}"
+           aria-expanded="{% if selected == node.entry.id %}true{% else %}false{% endif %}"
+         {% endif %}>
         <span class="item-label">
           {% if is_directory %}
             {{ folder_icon() }}
@@ -15,6 +25,33 @@
           <span>{{ highlight_match(node.entry.name) }}</span>
         </span>
       </a>
+      {% if not is_directory %}
+        <div class="search-tree-preview"
+             data-search-preview-panel="{{ node.entry.id }}"
+             {% if selected != node.entry.id %}hidden{% endif %}>
+          <a class="search-tree-preview-link"
+             href="{{ browse_href }}">
+            <span class="search-tree-preview-media">
+              {% if is_thumbnail_candidate(node.entry) %}
+                <img {% if selected == node.entry.id %}src="/thumbnails/{{ node.entry.id }}"{% endif %}
+                     data-thumbnail-src="/thumbnails/{{ node.entry.id }}"
+                     alt=""
+                     loading="lazy"
+                     onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                <span data-thumbnail-fallback hidden>
+                  {{ file_icon() }}
+                </span>
+              {% else %}
+                {{ file_icon() }}
+              {% endif %}
+            </span>
+          </a>
+          <a class="search-tree-preview-download"
+             href="/downloads/{{ node.entry.id }}">
+            下载
+          </a>
+        </div>
+      {% endif %}
       {% if node.children %}
         {{ render_search_tree(node.children, true) }}
       {% endif %}

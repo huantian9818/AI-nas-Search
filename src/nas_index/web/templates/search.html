@@ -81,7 +81,9 @@
     </section>
 
     {% if results.total %}
-      <section class="section-block browse-sidebar search-directory-list">
+      <section class="section-block browse-sidebar search-directory-list"
+               data-search-preview-root
+               data-selected-entry="{{ selected or '' }}">
         <p>命中目录</p>
         {{ render_search_tree(tree_nodes) }}
       </section>
@@ -112,6 +114,89 @@
         button.disabled = true;
       }
     });
+
+    const previewRoot = document.querySelector("[data-search-preview-root]");
+    if (previewRoot) {
+      const previewTriggers = Array.from(
+        previewRoot.querySelectorAll("[data-search-preview-trigger]")
+      );
+      const previewPanels = Array.from(
+        previewRoot.querySelectorAll("[data-search-preview-panel]")
+      );
+
+      const loadPreviewThumbnail = (panel) => {
+        if (!panel) {
+          return;
+        }
+
+        const image = panel.querySelector("img[data-thumbnail-src]");
+        if (!image) {
+          return;
+        }
+
+        const thumbnailSrc = image.dataset.thumbnailSrc;
+        if (thumbnailSrc && !image.getAttribute("src")) {
+          image.setAttribute("src", thumbnailSrc);
+        }
+      };
+
+      const syncPreviewSelection = (selectedId) => {
+        previewTriggers.forEach((trigger) => {
+          const isSelected = (
+            selectedId !== "" &&
+            trigger.dataset.entryId === selectedId
+          );
+          trigger.classList.toggle("is-current", isSelected);
+          trigger.setAttribute(
+            "aria-expanded",
+            isSelected ? "true" : "false"
+          );
+        });
+
+        previewPanels.forEach((panel) => {
+          const isSelected = (
+            selectedId !== "" &&
+            panel.dataset.searchPreviewPanel === selectedId
+          );
+          panel.hidden = !isSelected;
+          if (isSelected) {
+            loadPreviewThumbnail(panel);
+          }
+        });
+      };
+
+      previewRoot.addEventListener("click", (event) => {
+        const trigger = event.target.closest("[data-search-preview-trigger]");
+        if (!trigger || !previewRoot.contains(trigger)) {
+          return;
+        }
+
+        event.preventDefault();
+        const selectedId = trigger.dataset.entryId || "";
+        syncPreviewSelection(selectedId);
+
+        const nextUrl = new URL(trigger.href, window.location.href);
+        if (
+          nextUrl.pathname + nextUrl.search !==
+          window.location.pathname + window.location.search
+        ) {
+          window.history.pushState(
+            { selectedId },
+            "",
+            nextUrl
+          );
+        }
+      });
+
+      window.addEventListener("popstate", () => {
+        const params = new URLSearchParams(window.location.search);
+        syncPreviewSelection(params.get("selected") || "");
+      });
+
+      syncPreviewSelection(
+        previewRoot.dataset.selectedEntry || ""
+      );
+    }
 
     const summaryForm = document.querySelector("[data-summary-form]");
     if (!summaryForm) {

@@ -141,6 +141,18 @@ def test_search_form_uses_compact_single_column_layout(
     assert "grid-template-columns: max-content minmax(0, 1fr);" not in response.text
 
 
+def test_search_preview_panels_stay_hidden_before_selection(
+    client,
+):
+    response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert re.search(
+        r"\.search-tree-preview\[hidden\]\s*{[^}]*display:\s*none;",
+        response.text,
+    )
+
+
 def test_search_page_returns_name_and_full_path(
     client,
     search_layout_entries,
@@ -530,11 +542,110 @@ def test_search_tree_links_to_matching_directories_and_files(
     )
 
     assert "/search?q=%E9%A1%B9%E7%9B%AE&amp;page=1&amp;selected=" not in response.text
-    assert "/browse?path=/Public&amp;selected=" in response.text
+    assert "/search?q=%E9%A1%B9%E7%9B%AE&amp;selected=" in response.text
     assert "/browse?path=/Public/%E9%A1%B9%E7%9B%AE%E8%B5%84%E6%96%99" in response.text
-    assert "/browse?path=/Public/%E9%A1%B9%E7%9B%AE%E8%B5%84%E6%96%99&amp;selected=" in response.text
-    assert "/browse?path=/Archive/2025&amp;selected=" in response.text
-    assert "&amp;selected=" in response.text
+    assert 'data-search-preview-trigger' in response.text
+
+
+def test_search_page_shows_inline_preview_for_selected_file(
+    client,
+    web_public_access,
+):
+    with Session(client.app.state.engine) as session:
+        EntryRepository(session).upsert_batch(
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果海报.jpg",
+                    "/Public/苹果海报.jpg",
+                    "/Public",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+        entry_id = EntryRepository(session).get_by_path(
+            "/Public/苹果海报.jpg"
+        ).id
+
+    response = client.get(
+        "/search",
+        params={
+            "q": "苹果",
+            "selected": entry_id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert f'href="/search?q=%E8%8B%B9%E6%9E%9C&amp;selected={entry_id}"' in response.text
+    assert 'class="search-tree-preview"' in response.text
+    assert f'src="/thumbnails/{entry_id}"' in response.text
+    assert f'href="/downloads/{entry_id}"' in response.text
+    assert f'href="/browse?path=/Public&amp;selected={entry_id}"' in response.text
+
+
+def test_search_page_exposes_inline_preview_hooks_for_no_refresh_toggle(
+    client,
+    web_public_access,
+):
+    with Session(client.app.state.engine) as session:
+        EntryRepository(session).upsert_batch(
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果细节图.jpg",
+                    "/Public/苹果细节图.jpg",
+                    "/Public",
+                    "file",
+                    84,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+        entry_id = EntryRepository(session).get_by_path(
+            "/Public/苹果细节图.jpg"
+        ).id
+
+    response = client.get(
+        "/search",
+        params={"q": "苹果"},
+    )
+
+    assert response.status_code == 200
+    assert 'data-search-preview-root' in response.text
+    assert re.search(
+        rf'data-search-preview-trigger[^>]*data-entry-id="{entry_id}"',
+        response.text,
+    )
+    assert re.search(
+        rf'data-search-preview-panel="{entry_id}"[^>]*hidden',
+        response.text,
+    )
+    assert f'data-thumbnail-src="/thumbnails/{entry_id}"' in response.text
+    assert f'href="/search?q=%E8%8B%B9%E6%9E%9C&amp;selected={entry_id}"' in response.text
 
 
 def test_search_page_shows_empty_state_for_missing_query(

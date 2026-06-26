@@ -73,6 +73,28 @@ def test_browse_page_uses_versioned_static_stylesheet(
     assert "/static/app.css?v=" in response.text
 
 
+def test_browse_page_marks_selected_file_with_current_badge(
+    client,
+    web_seeded_entries,
+):
+    with Session(client.app.state.engine) as session:
+        selected = EntryRepository(session).get_by_path(
+            "/Public/年度项目计划.docx"
+        )
+
+    response = client.get(
+        "/browse",
+        params={
+            "path": "/Public",
+            "selected": selected.id,
+        },
+    )
+
+    assert response.status_code == 200
+    assert "browse-tile-current-badge" in response.text
+    assert "当前文件" in response.text
+
+
 def test_browse_grid_links_image_files_to_thumbnail_endpoint(
     client,
     web_public_access,

@@ -50,17 +50,24 @@
                   href="/browse?path={{ item.full_path | urlencode }}"
                 {% endif %}
               >
-                {% if is_directory %}
-                  <span class="browse-tile-select"></span>
-                {% else %}
-                  <label class="browse-tile-select">
-                    <input type="checkbox"
-                           name="entry_ids"
-                           value="{{ item.id }}"
-                           data-entry-select
-                           aria-label="选择 {{ item.name }}">
-                  </label>
-                {% endif %}
+                <span class="browse-tile-meta">
+                  {% if is_directory %}
+                    <span class="browse-tile-select"></span>
+                  {% else %}
+                    <label class="browse-tile-select">
+                      <input type="checkbox"
+                             name="entry_ids"
+                             value="{{ item.id }}"
+                             data-entry-select
+                             aria-label="选择 {{ item.name }}">
+                    </label>
+                  {% endif %}
+                  {% if selected == item.id %}
+                    <span class="browse-tile-current-badge">
+                      {% if is_directory %}当前目录{% else %}当前文件{% endif %}
+                    </span>
+                  {% endif %}
+                </span>
                 <span class="browse-tile-preview">
                   {% if is_directory %}
                     {{ folder_icon() }}
