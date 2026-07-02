@@ -228,3 +228,141 @@ def test_page_for_entry_locates_selected_row(database):
             )
             == 3
         )
+
+
+def test_search_subtree_limits_results_to_current_branch(
+    database,
+):
+    with Session(database) as session:
+        nas_id = _create_nas(session, "Office")
+        repository = EntryRepository(session)
+        repository.upsert_batch(
+            nas_id,
+            [
+                IndexedItem(
+                    "Design",
+                    "/Design",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    "/Design",
+                ),
+                IndexedItem(
+                    "包装设计",
+                    "/Design/包装设计",
+                    "/Design",
+                    "directory",
+                    None,
+                    None,
+                    "/Design",
+                ),
+                IndexedItem(
+                    "苹果方案.png",
+                    "/Design/包装设计/苹果方案.png",
+                    "/Design/包装设计",
+                    "file",
+                    1,
+                    None,
+                    "/Design",
+                ),
+                IndexedItem(
+                    "苹果提案.png",
+                    "/Design/包装设计/子目录/苹果提案.png",
+                    "/Design/包装设计/子目录",
+                    "file",
+                    1,
+                    None,
+                    "/Design",
+                ),
+                IndexedItem(
+                    "苹果归档.png",
+                    "/Design/运营/苹果归档.png",
+                    "/Design/运营",
+                    "file",
+                    1,
+                    None,
+                    "/Design",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+
+        page = repository.search_subtree(
+            "苹果",
+            nas_id=nas_id,
+            path="/Design/包装设计",
+            allowed_share_paths=("/Design",),
+        )
+
+    assert [item.full_path for item in page.items] == [
+        "/Design/包装设计/苹果方案.png",
+        "/Design/包装设计/子目录/苹果提案.png",
+    ]
+    assert page.total == 2
+    assert page.page == 1
+    assert page.page_size == 2
+
+
+def test_search_subtree_from_root_still_respects_share_permissions(
+    database,
+):
+    with Session(database) as session:
+        nas_id = _create_nas(session, "Office")
+        repository = EntryRepository(session)
+        repository.upsert_batch(
+            nas_id,
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    "/Public",
+                ),
+                IndexedItem(
+                    "苹果资料.png",
+                    "/Public/苹果资料.png",
+                    "/Public",
+                    "file",
+                    1,
+                    None,
+                    "/Public",
+                ),
+                IndexedItem(
+                    "Secret",
+                    "/Secret",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    "/Secret",
+                ),
+                IndexedItem(
+                    "苹果财务.png",
+                    "/Secret/苹果财务.png",
+                    "/Secret",
+                    "file",
+                    1,
+                    None,
+                    "/Secret",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+
+        page = repository.search_subtree(
+            "苹果",
+            nas_id=nas_id,
+            path="/",
+            allowed_share_paths=("/Public",),
+        )
+
+    assert [item.full_path for item in page.items] == [
+        "/Public/苹果资料.png"
+    ]
+    assert page.total == 1

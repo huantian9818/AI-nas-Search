@@ -2,7 +2,15 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Generic, TypeVar
 
-from sqlalchemy import bindparam, case, delete, func, select, text
+from sqlalchemy import (
+    bindparam,
+    case,
+    delete,
+    func,
+    or_,
+    select,
+    text,
+)
 from sqlalchemy.dialects.sqlite import insert
 from sqlalchemy.orm import Session
 
@@ -37,6 +45,41 @@ def share_path_from_full_path(full_path: str) -> str:
     if not parts:
         return "/"
     return f"/{parts[0]}"
+
+
+def _escape_like(value: str) -> str:
+    return (
+        value.replace("\\", "\\\\")
+        .replace("%", "\\%")
+        .replace("_", "\\_")
+    )
+
+
+def _normalized_search_path(path: str) -> str:
+    path = path.strip() or "/"
+    if path != "/" and path.endswith("/"):
+        return path.rstrip("/")
+    return path
+
+
+def _subtree_scope_predicate(path: str):
+    normalized = _normalized_search_path(path)
+    if normalized == "/":
+        return None
+    escaped = _escape_like(normalized)
+    return or_(
+        Entry.full_path == normalized,
+        Entry.full_path.like(
+            f"{escaped}/%",
+            escape="\\",
+        ),
+    )
+
+
+def _path_depth_order(column):
+    return func.length(column) - func.length(
+        func.replace(column, "/", "")
+    )
 
 
 class EntryRepository:
@@ -614,6 +657,116 @@ class EntryRepository:
             if allowed_share_paths is not None
             else 0,
             "share_paths": share_paths,
+        }
+        rows = list(
+            self.session.scalars(
+                select(Entry).from_statement(rows_sql),
+                params,
+            )
+        )
+        return Page(
+            rows,
+            len(rows),
+            1,
+            len(rows),
+        )
+
+    def search_subtree(
+        self,
+        query: str,
+        *,
+        nas_id: int = DEFAULT_NAS_ID,
+        path: str,
+        allowed_share_paths: tuple[str, ...] | None = None,
+    ) -> Page[Entry]:
+        query = query.strip()
+        if not query:
+            return Page([], 0, 1, 0)
+        if allowed_share_paths is not None and not allowed_share_paths:
+            return Page([], 0, 1, 0)
+
+        subtree_predicate = _subtree_scope_predicate(path)
+
+        if len(query) < 3:
+            predicate = [
+                Entry.nas_id == nas_id,
+                Entry.name.ilike(
+                    f"%{_escape_like(query)}%",
+                    escape="\\",
+                ),
+                _visible_entry_predicate(),
+            ]
+            if subtree_predicate is not None:
+                predicate.append(subtree_predicate)
+            if allowed_share_paths is not None:
+                predicate.append(
+                    Entry.share_path.in_(allowed_share_paths)
+                )
+            rows = list(
+                self.session.scalars(
+                    select(Entry)
+                    .where(*predicate)
+                    .order_by(
+                        case(
+                            (
+                                Entry.entry_type == "directory",
+                                0,
+                            ),
+                            else_=1,
+                        ),
+                        _path_depth_order(
+                            Entry.full_path
+                        ),
+                        func.lower(Entry.name),
+                        Entry.id,
+                    )
+                )
+            )
+            return Page(
+                rows,
+                len(rows),
+                1,
+                len(rows),
+            )
+
+        normalized_path = _normalized_search_path(path)
+        rows_sql = text(
+            """
+            SELECT e.*
+            FROM entry_search
+            CROSS JOIN entries AS e ON e.id = entry_search.rowid
+            WHERE entry_search MATCH :query
+              AND e.nas_id = :nas_id
+              AND e.name NOT LIKE '.%'
+              AND (
+                :filter_shares = 0
+                OR e.share_path IN :share_paths
+              )
+              AND (
+                :path_is_root = 1
+                OR e.full_path = :path
+                OR e.full_path LIKE :path_like ESCAPE '\\'
+              )
+            ORDER BY CASE
+                       WHEN e.entry_type = 'directory'
+                       THEN 0 ELSE 1
+                     END,
+                     length(e.full_path) - length(replace(e.full_path, '/', '')),
+                     lower(e.name),
+                     e.id
+            """
+        ).bindparams(bindparam("share_paths", expanding=True))
+        share_paths = list(allowed_share_paths or ("/",))
+        params = {
+            "query": '"' + query.replace('"', '""') + '"',
+            "nas_id": nas_id,
+            "filter_shares": 1
+            if allowed_share_paths is not None
+            else 0,
+            "share_paths": share_paths,
+            "path_is_root": 1 if normalized_path == "/" else 0,
+            "path": normalized_path,
+            "path_like": f"{_escape_like(normalized_path)}/%",
         }
         rows = list(
             self.session.scalars(
