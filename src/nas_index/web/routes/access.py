@@ -15,6 +15,9 @@ from nas_index.web.dependencies import get_session
 router = APIRouter()
 
 ACCESS_COOKIE_NAME = "nas_access"
+ACCESS_ERROR_MESSAGES = {
+    "sid_expired": "NAS 登录已过期，请重新登录",
+}
 
 
 def _safe_next(value: str | None) -> str:
@@ -96,6 +99,7 @@ def _normalize_access_check_result(
 def access_page(
     request: Request,
     next: str = "/browse",
+    reason: str | None = None,
     session: Session = Depends(get_session),
 ):
     servers = NasRepository(session).list_enabled_servers()
@@ -105,7 +109,7 @@ def access_page(
         context={
             "servers": servers,
             "access": current_access(request),
-            "error": None,
+            "error": ACCESS_ERROR_MESSAGES.get(reason),
             "next": _safe_next(next),
         },
     )

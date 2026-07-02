@@ -15,6 +15,7 @@ from nas_index.qnap.errors import (
     QnapConnectionError,
     QnapPermissionError,
     QnapProtocolError,
+    QnapSessionExpired,
     QnapTwoStepRequired,
 )
 from nas_index.time import from_timestamp_beijing
@@ -279,6 +280,28 @@ class QnapClient:
                 )
                 raise QnapProtocolError() from exc
         return shares
+
+    async def validate_sid(self) -> None:
+        try:
+            payload = await self._file_station_request(
+                {
+                    "func": "get_tree",
+                    "node": "share_root",
+                    "is_iso": 0,
+                    "hidden_file": 0,
+                }
+            )
+        except QnapProtocolError as exc:
+            if exc.status == 3:
+                raise QnapSessionExpired() from exc
+            raise
+        if not isinstance(payload, list):
+            LOGGER.warning(
+                "QNAP sid validation returned unexpected payload "
+                "payload=%s",
+                _payload_excerpt(payload),
+            )
+            raise QnapProtocolError()
 
     async def iter_children(
         self,

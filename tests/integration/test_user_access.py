@@ -117,6 +117,16 @@ def test_access_page_without_servers_tells_user_to_contact_admin(client):
     assert 'href="/admin/login"' in response.text
 
 
+def test_access_page_shows_sid_expired_message(client):
+    response = client.get(
+        "/access",
+        params={"reason": "sid_expired"},
+    )
+
+    assert response.status_code == 200
+    assert "NAS 登录已过期，请重新登录" in response.text
+
+
 def test_access_login_filters_browse_and_search_by_allowed_shares(
     client,
     monkeypatch,

@@ -13,6 +13,10 @@ class QnapAuthenticationError(QnapError):
     user_message = "NAS 用户名或密码错误"
 
 
+class QnapSessionExpired(QnapAuthenticationError):
+    user_message = "NAS 登录已过期，请重新登录"
+
+
 class QnapTwoStepRequired(QnapError):
     user_message = "此账号启用了两步验证，请改用未启用两步验证的只读账号"
 

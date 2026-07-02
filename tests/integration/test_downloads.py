@@ -2,6 +2,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
 
+from nas_index.qnap.errors import QnapSessionExpired
 from nas_index.repositories.entries import EntryRepository
 from nas_index.repositories.nas import NasRepository
 from nas_index.types import IndexedItem
@@ -21,7 +22,35 @@ def _create_server(session: Session) -> int:
     return server.id
 
 
-def test_download_redirects_allowed_file_to_qnap(client):
+def _allow_download_access_checker(
+    client,
+    monkeypatch,
+):
+    async def fake_check_download_access(
+        *,
+        server,
+        access,
+        settings,
+    ):
+        assert server.id == access.nas_id
+        assert settings is client.app.state.settings
+
+    monkeypatch.setattr(
+        client.app.state,
+        "download_access_checker",
+        fake_check_download_access,
+        raising=False,
+    )
+
+
+def test_download_redirects_allowed_file_to_qnap(
+    client,
+    monkeypatch,
+):
+    _allow_download_access_checker(
+        client,
+        monkeypatch,
+    )
     with Session(client.app.state.engine) as session:
         nas_id = _create_server(session)
         EntryRepository(session).upsert_batch(
@@ -77,6 +106,83 @@ def test_download_redirects_allowed_file_to_qnap(client):
     assert "isfolder=0" in location
     assert "source_path=%2FPublic%2F%E8%AE%BE%E8%AE%A1%E5%9B%BE" in location
     assert "source_file=%E8%8B%B9%E6%9E%9C%20%E4%B8%BB%E5%9B%BE.jpg" in location
+
+
+def test_download_redirects_to_access_when_qnap_sid_is_expired(
+    client,
+    monkeypatch,
+):
+    with Session(client.app.state.engine) as session:
+        nas_id = _create_server(session)
+        EntryRepository(session).upsert_batch(
+            nas_id,
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果.jpg",
+                    "/Public/设计图/苹果.jpg",
+                    "/Public/设计图",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+        entry_id = EntryRepository(session).get_by_nas_path(
+            nas_id,
+            "/Public/设计图/苹果.jpg",
+        ).id
+
+    async def fake_check_download_access(
+        *,
+        server,
+        access,
+        settings,
+    ):
+        raise QnapSessionExpired()
+
+    monkeypatch.setattr(
+        client.app.state,
+        "download_access_checker",
+        fake_check_download_access,
+        raising=False,
+    )
+
+    token = client.app.state.access_store.create(
+        nas_id=nas_id,
+        username="alice",
+        share_paths=("/Public",),
+        qnap_sid="expired-sid",
+    )
+    client.cookies.set("nas_access", token)
+
+    response = client.get(
+        f"/downloads/{entry_id}",
+        headers={
+            "referer": "http://testserver/browse?path=%2FPublic",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    assert response.headers["location"] == (
+        "/access?next=%2Fbrowse%3Fpath%3D%252FPublic"
+        "&reason=sid_expired"
+    )
+    assert client.app.state.access_store.get(token) is None
+    assert "nas_access=" in response.headers["set-cookie"]
+    assert "max-age=0" in response.headers["set-cookie"].lower()
 
 
 def test_download_rejects_file_outside_user_shares(client):
@@ -162,7 +268,12 @@ def test_browse_page_shows_select_all_control_for_batch_download(
 
 def test_batch_download_redirects_same_directory_files_to_qnap(
     client,
+    monkeypatch,
 ):
+    _allow_download_access_checker(
+        client,
+        monkeypatch,
+    )
     with Session(client.app.state.engine) as session:
         nas_id = _create_server(session)
         EntryRepository(session).upsert_batch(
