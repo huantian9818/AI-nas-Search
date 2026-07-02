@@ -26,6 +26,14 @@ class DirectoryTreeNode:
     is_ancestor: bool
 
 
+@dataclass(frozen=True)
+class BrowseSearchResult:
+    entry: Entry
+    relative_path: str
+    browse_path: str
+    selected_id: int | None
+
+
 def _normalize_path(value: str) -> str:
     parts = [
         part
@@ -92,6 +100,32 @@ def _build_tree(
     return nodes
 
 
+def _search_target(entry: Entry) -> tuple[str, int | None]:
+    if entry.entry_type == "directory":
+        return entry.full_path, None
+    return entry.parent_path, entry.id
+
+
+def _relative_result_path(
+    current_path: str,
+    entry: Entry,
+) -> str:
+    anchor_path = (
+        entry.full_path
+        if entry.entry_type == "directory"
+        else entry.parent_path
+    )
+    if current_path == "/":
+        relative = anchor_path.removeprefix("/")
+    elif anchor_path == current_path:
+        relative = ""
+    else:
+        relative = anchor_path.removeprefix(
+            f"{current_path}/"
+        )
+    return relative or "当前目录"
+
+
 @router.get(
     "",
     response_class=HTMLResponse,
@@ -100,6 +134,7 @@ def _build_tree(
 def browse(
     request: Request,
     path: str = Query("/"),
+    q: str = Query(""),
     selected: int | None = None,
     page: int = Query(1, ge=1),
     session: Session = Depends(get_session),
@@ -109,27 +144,62 @@ def browse(
         return access_login_redirect(request)
 
     path = _normalize_path(path)
+    query = q.strip()
     repository = EntryRepository(session)
-    if selected is not None:
-        page = (
-            repository.page_for_entry(
-                selected,
-                page_size=100,
-            )
-            or page
+    search_mode = bool(query)
+    if search_mode:
+        search_page = repository.search_subtree(
+            query,
+            nas_id=access.nas_id,
+            path=path,
+            allowed_share_paths=access.share_paths,
         )
-    listing = repository.list_children(
-        access.nas_id,
-        path,
-        allowed_share_paths=access.share_paths,
-        page=page,
-        page_size=100,
-    )
+        search_results = []
+        for entry in search_page.items:
+            browse_path, selected_id = _search_target(
+                entry
+            )
+            search_results.append(
+                BrowseSearchResult(
+                    entry=entry,
+                    relative_path=_relative_result_path(
+                        path,
+                        entry,
+                    ),
+                    browse_path=browse_path,
+                    selected_id=selected_id,
+                )
+            )
+        listing = None
+    else:
+        if selected is not None:
+            page = (
+                repository.page_for_entry(
+                    selected,
+                    page_size=100,
+                )
+                or page
+            )
+        listing = repository.list_children(
+            access.nas_id,
+            path,
+            allowed_share_paths=access.share_paths,
+            page=page,
+            page_size=100,
+        )
+        search_page = None
+        search_results = []
     return request.app.state.templates.TemplateResponse(
         request=request,
         name="browse.html",
         context={
             "path": path,
+            "search_mode": search_mode,
+            "search_query": query,
+            "search_results": search_results,
+            "search_total": (
+                0 if search_page is None else search_page.total
+            ),
             "selected": selected,
             "listing": listing,
             "tree_nodes": _build_tree(

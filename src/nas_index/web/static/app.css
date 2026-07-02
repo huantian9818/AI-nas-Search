@@ -412,6 +412,37 @@ td {
   align-items: start;
 }
 
+.browse-search-form {
+  display: grid;
+  grid-template-columns: minmax(0, 560px);
+  justify-content: start;
+  gap: 8px;
+  align-items: start;
+}
+
+.browse-search-label {
+  display: block;
+  padding-top: 4px;
+  white-space: nowrap;
+}
+
+.browse-search-controls {
+  display: grid;
+  gap: 8px;
+}
+
+.browse-search-controls input {
+  max-width: 560px;
+}
+
+.browse-search-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 1.6em;
+  flex-wrap: wrap;
+}
+
 .batch-download-form {
   display: grid;
   gap: 12px;
@@ -506,6 +537,30 @@ button:disabled {
 
 .browse-tile.selected .browse-tile-name {
   font-weight: 700;
+}
+
+.browse-search-tile {
+  grid-template-rows: auto 96px 34px 18px 18px;
+  min-height: 214px;
+}
+
+.browse-search-primary {
+  display: grid;
+  gap: 6px;
+  color: inherit;
+  text-decoration: none;
+}
+
+.browse-search-primary:hover {
+  text-decoration: none;
+}
+
+.browse-search-result-path {
+  min-height: 18px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #444;
+  overflow-wrap: anywhere;
 }
 
 .browse-tile-preview {

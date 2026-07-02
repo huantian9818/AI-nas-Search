@@ -1,3 +1,4 @@
+import re
 from datetime import UTC, datetime
 
 from sqlalchemy.orm import Session
@@ -6,6 +7,11 @@ from nas_index.repositories.entries import EntryRepository
 from nas_index.repositories.nas import NasRepository
 from nas_index.services.thumbnails import ThumbnailResult
 from nas_index.types import IndexedItem
+
+
+def _plain_text(html: str) -> str:
+    text = re.sub(r"<[^>]+>", "", html)
+    return re.sub(r"\s+", " ", text).strip()
 
 
 def test_browse_page_lists_direct_children(
@@ -93,6 +99,235 @@ def test_browse_page_marks_selected_file_with_current_badge(
     assert response.status_code == 200
     assert "browse-tile-current-badge" in response.text
     assert "当前文件" in response.text
+
+
+def test_browse_search_limits_results_to_current_subtree(
+    client,
+    web_public_access,
+):
+    with Session(client.app.state.engine) as session:
+        repository = EntryRepository(session)
+        repository.upsert_batch(
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "资料",
+                    "/Public/资料",
+                    "/Public",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "提案",
+                    "/Public/资料/提案",
+                    "/Public/资料",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果方案.png",
+                    "/Public/资料/提案/苹果方案.png",
+                    "/Public/资料/提案",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果总结.docx",
+                    "/Public/资料/苹果总结.docx",
+                    "/Public/资料",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果归档.zip",
+                    "/Public/归档/苹果归档.zip",
+                    "/Public/归档",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+
+    response = client.get(
+        "/browse",
+        params={"path": "/Public/资料", "q": "苹果"},
+    )
+    text = _plain_text(response.text)
+
+    assert response.status_code == 200
+    assert "苹果方案.png" in text
+    assert "苹果总结.docx" in text
+    assert "苹果归档.zip" not in text
+    assert "命中 2 项" in text
+    assert "批量下载" not in text
+
+
+def test_browse_search_file_link_targets_parent_with_selected_id(
+    client,
+    web_public_access,
+):
+    with Session(client.app.state.engine) as session:
+        repository = EntryRepository(session)
+        repository.upsert_batch(
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "资料",
+                    "/Public/资料",
+                    "/Public",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果方案.png",
+                    "/Public/资料/苹果方案.png",
+                    "/Public/资料",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+        entry_id = repository.get_by_nas_path(
+            1,
+            "/Public/资料/苹果方案.png",
+        ).id
+
+    response = client.get(
+        "/browse",
+        params={"path": "/Public/资料", "q": "苹果"},
+    )
+
+    assert response.status_code == 200
+    assert (
+        f'href="/browse?path=/Public/%E8%B5%84%E6%96%99&selected={entry_id}"'
+        in response.text
+    )
+
+
+def test_browse_search_renders_form_relative_path_and_clear_action(
+    client,
+    web_public_access,
+):
+    with Session(client.app.state.engine) as session:
+        repository = EntryRepository(session)
+        repository.upsert_batch(
+            [
+                IndexedItem(
+                    "Public",
+                    "/Public",
+                    "/",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "资料",
+                    "/Public/资料",
+                    "/Public",
+                    "directory",
+                    None,
+                    None,
+                    share_path="/Public",
+                ),
+                IndexedItem(
+                    "苹果主图.jpg",
+                    "/Public/资料/苹果主图.jpg",
+                    "/Public/资料",
+                    "file",
+                    42,
+                    datetime(2026, 1, 1, tzinfo=UTC),
+                    share_path="/Public",
+                ),
+            ],
+            generation=1,
+        )
+        session.commit()
+        entry_id = repository.get_by_nas_path(
+            1,
+            "/Public/资料/苹果主图.jpg",
+        ).id
+
+    response = client.get(
+        "/browse",
+        params={"path": "/Public", "q": "苹果"},
+    )
+
+    assert response.status_code == 200
+    assert 'for="browse-query"' in response.text
+    assert "在当前目录及子目录搜索" in response.text
+    assert 'name="q"' in response.text
+    assert 'value="苹果"' in response.text
+    assert ">清空<" in response.text
+    assert "browse-search-result-path" in response.text
+    assert re.search(
+        r'browse-search-result-path">\s*资料\s*<',
+        response.text,
+    )
+    assert f'src="/thumbnails/{entry_id}"' in response.text
+    assert f'href="/downloads/{entry_id}"' in response.text
+
+
+def test_browse_search_shows_empty_state_without_pagination(
+    client,
+    web_seeded_entries,
+):
+    response = client.get(
+        "/browse",
+        params={"path": "/Public", "q": "不存在"},
+    )
+    text = _plain_text(response.text)
+
+    assert response.status_code == 200
+    assert "当前目录及子目录下没有匹配项。" in text
+    assert "上一页" not in text
+    assert "下一页" not in text
+
+
+def test_browse_search_styles_define_compact_form_and_result_path(
+    client,
+):
+    response = client.get("/static/app.css")
+
+    assert response.status_code == 200
+    assert ".browse-search-form" in response.text
+    assert ".browse-search-actions" in response.text
+    assert ".browse-search-result-path" in response.text
+    assert ".browse-search-primary" in response.text
 
 
 def test_browse_grid_links_image_files_to_thumbnail_endpoint(

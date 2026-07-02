@@ -22,69 +22,68 @@
           <code>{{ path }}</code>
         </span>
       </p>
-      <p>共 {{ listing.total }} 项</p>
-
-      {% if listing.items %}
-        <form class="batch-download-form"
-              method="post"
-              action="/downloads/batch"
-              data-batch-download-form>
-          <div class="browse-actions">
-            <label class="select-all-control">
-              <input type="checkbox" data-select-all>
-              <span>全选</span>
-            </label>
-            <button type="submit"
-                    data-batch-download-submit
-                    disabled>
-              批量下载
-            </button>
+      <form class="browse-search-form"
+            method="get"
+            action="/browse">
+        <input type="hidden" name="path" value="{{ path }}">
+        <label class="browse-search-label" for="browse-query">
+          在当前目录及子目录搜索
+        </label>
+        <div class="browse-search-controls">
+          <input id="browse-query"
+                 name="q"
+                 type="text"
+                 value="{{ search_query }}"
+                 placeholder="输入关键词">
+          <div class="browse-search-actions">
+            <button type="submit">搜索</button>
+            {% if search_mode %}
+              <a href="/browse?path={{ path | urlencode }}">清空</a>
+            {% endif %}
           </div>
+        </div>
+      </form>
+
+      {% if search_mode %}
+        <p>命中 {{ search_total }} 项</p>
+
+        {% if search_results %}
           <div class="browse-grid">
-            {% for item in listing.items %}
+            {% for result in search_results %}
+              {% set item = result.entry %}
               {% set is_directory = item.entry_type == "directory" %}
-              {% set tile_tag = "a" if is_directory else "div" %}
-              <{{ tile_tag }}
-                class="browse-tile{% if selected == item.id %} selected{% endif %}"
-                {% if is_directory %}
-                  href="/browse?path={{ item.full_path | urlencode }}"
-                {% endif %}
-              >
-                <span class="browse-tile-meta">
-                  {% if is_directory %}
+              <div class="browse-tile browse-search-tile{% if selected == item.id %} selected{% endif %}">
+                <a class="browse-search-primary"
+                   href="/browse?path={{ result.browse_path | urlencode }}{% if result.selected_id is not none %}&selected={{ result.selected_id }}{% endif %}">
+                  <span class="browse-tile-meta">
                     <span class="browse-tile-select"></span>
-                  {% else %}
-                    <label class="browse-tile-select">
-                      <input type="checkbox"
-                             name="entry_ids"
-                             value="{{ item.id }}"
-                             data-entry-select
-                             aria-label="选择 {{ item.name }}">
-                    </label>
-                  {% endif %}
-                  {% if selected == item.id %}
-                    <span class="browse-tile-current-badge">
-                      {% if is_directory %}当前目录{% else %}当前文件{% endif %}
-                    </span>
-                  {% endif %}
-                </span>
-                <span class="browse-tile-preview">
-                  {% if is_directory %}
-                    {{ folder_icon() }}
-                  {% elif is_thumbnail_candidate(item) %}
-                    <img src="/thumbnails/{{ item.id }}"
-                         alt=""
-                         loading="lazy"
-                         onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
-                    <span data-thumbnail-fallback hidden>
+                    {% if selected == item.id %}
+                      <span class="browse-tile-current-badge">
+                        {% if is_directory %}当前目录{% else %}当前文件{% endif %}
+                      </span>
+                    {% endif %}
+                  </span>
+                  <span class="browse-tile-preview">
+                    {% if is_directory %}
+                      {{ folder_icon() }}
+                    {% elif is_thumbnail_candidate(item) %}
+                      <img src="/thumbnails/{{ item.id }}"
+                           alt=""
+                           loading="lazy"
+                           onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                      <span data-thumbnail-fallback hidden>
+                        {{ file_icon() }}
+                      </span>
+                    {% else %}
                       {{ file_icon() }}
-                    </span>
-                  {% else %}
-                    {{ file_icon() }}
-                  {% endif %}
-                </span>
-                <span class="browse-tile-name" title="{{ item.name }}">
-                  {{ item.name }}
+                    {% endif %}
+                  </span>
+                  <span class="browse-tile-name" title="{{ item.name }}">
+                    {{ item.name }}
+                  </span>
+                </a>
+                <span class="browse-search-result-path">
+                  {{ result.relative_path }}
                 </span>
                 {% if not is_directory %}
                   <a class="browse-tile-action"
@@ -92,26 +91,104 @@
                     下载
                   </a>
                 {% endif %}
-              </{{ tile_tag }}>
+              </div>
             {% endfor %}
           </div>
-        </form>
+        {% else %}
+          <p>当前目录及子目录下没有匹配项。</p>
+        {% endif %}
       {% else %}
-        <p>这个目录下没有内容。</p>
-      {% endif %}
+        <p>共 {{ listing.total }} 项</p>
 
-      <nav class="pagination">
-        {% if listing.page > 1 %}
-          <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page - 1 }}">
-            上一页
-          </a>
+        {% if listing.items %}
+          <form class="batch-download-form"
+                method="post"
+                action="/downloads/batch"
+                data-batch-download-form>
+            <div class="browse-actions">
+              <label class="select-all-control">
+                <input type="checkbox" data-select-all>
+                <span>全选</span>
+              </label>
+              <button type="submit"
+                      data-batch-download-submit
+                      disabled>
+                批量下载
+              </button>
+            </div>
+            <div class="browse-grid">
+              {% for item in listing.items %}
+                {% set is_directory = item.entry_type == "directory" %}
+                {% set tile_tag = "a" if is_directory else "div" %}
+                <{{ tile_tag }}
+                  class="browse-tile{% if selected == item.id %} selected{% endif %}"
+                  {% if is_directory %}
+                    href="/browse?path={{ item.full_path | urlencode }}"
+                  {% endif %}
+                >
+                  <span class="browse-tile-meta">
+                    {% if is_directory %}
+                      <span class="browse-tile-select"></span>
+                    {% else %}
+                      <label class="browse-tile-select">
+                        <input type="checkbox"
+                               name="entry_ids"
+                               value="{{ item.id }}"
+                               data-entry-select
+                               aria-label="选择 {{ item.name }}">
+                      </label>
+                    {% endif %}
+                    {% if selected == item.id %}
+                      <span class="browse-tile-current-badge">
+                        {% if is_directory %}当前目录{% else %}当前文件{% endif %}
+                      </span>
+                    {% endif %}
+                  </span>
+                  <span class="browse-tile-preview">
+                    {% if is_directory %}
+                      {{ folder_icon() }}
+                    {% elif is_thumbnail_candidate(item) %}
+                      <img src="/thumbnails/{{ item.id }}"
+                           alt=""
+                           loading="lazy"
+                           onerror="this.hidden=true; this.nextElementSibling.hidden=false;">
+                      <span data-thumbnail-fallback hidden>
+                        {{ file_icon() }}
+                      </span>
+                    {% else %}
+                      {{ file_icon() }}
+                    {% endif %}
+                  </span>
+                  <span class="browse-tile-name" title="{{ item.name }}">
+                    {{ item.name }}
+                  </span>
+                  {% if not is_directory %}
+                    <a class="browse-tile-action"
+                       href="/downloads/{{ item.id }}">
+                      下载
+                    </a>
+                  {% endif %}
+                </{{ tile_tag }}>
+              {% endfor %}
+            </div>
+          </form>
+        {% else %}
+          <p>这个目录下没有内容。</p>
         {% endif %}
-        {% if listing.page * listing.page_size < listing.total %}
-          <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page + 1 }}">
-            下一页
-          </a>
-        {% endif %}
-      </nav>
+
+        <nav class="pagination">
+          {% if listing.page > 1 %}
+            <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page - 1 }}">
+              上一页
+            </a>
+          {% endif %}
+          {% if listing.page * listing.page_size < listing.total %}
+            <a href="/browse?path={{ path | urlencode }}&amp;page={{ listing.page + 1 }}">
+              下一页
+            </a>
+          {% endif %}
+        </nav>
+      {% endif %}
     </section>
   </div>
 </div>
