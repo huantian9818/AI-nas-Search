@@ -9,6 +9,13 @@ class QnapConnectionError(QnapError):
     user_message = "无法连接 NAS，请检查地址、端口和网络"
 
 
+class QnapTlsVerificationError(QnapConnectionError):
+    user_message = (
+        "HTTPS 证书校验失败，请改用证书匹配的域名，"
+        "或开启忽略 HTTPS 证书校验"
+    )
+
+
 class QnapAuthenticationError(QnapError):
     user_message = "NAS 用户名或密码错误"
 

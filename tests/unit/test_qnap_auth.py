@@ -3,9 +3,14 @@ import base64
 import httpx
 import pytest
 
-from nas_index.qnap.client import QnapClient
+from nas_index.qnap.client import (
+    QnapClient,
+    QnapProbeResult,
+    probe_qnap_connection,
+)
 from nas_index.qnap.errors import (
     QnapAuthenticationError,
+    QnapTlsVerificationError,
     QnapTwoStepRequired,
 )
 from nas_index.types import NasConnection
@@ -140,3 +145,108 @@ async def test_logout_connection_failure_does_not_mask_operation():
             http=http,
         ):
             pass
+
+
+@pytest.mark.asyncio
+async def test_client_passes_verify_false_when_tls_bypass_enabled(
+    monkeypatch,
+):
+    captured = {}
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+        async def aclose(self):
+            return None
+
+    monkeypatch.setattr(
+        "nas_index.qnap.client.httpx.AsyncClient",
+        FakeAsyncClient,
+    )
+
+    client = QnapClient(
+        NasConnection(
+            "https://nas.local",
+            5001,
+            True,
+            "indexer",
+            "secret",
+            True,
+        )
+    )
+    await client.close()
+
+    assert captured["verify"] is False
+
+
+@pytest.mark.asyncio
+async def test_probe_qnap_connection_prefers_https_for_port_5001(
+    monkeypatch,
+):
+    attempts = []
+
+    async def fake_test_qnap_connection(
+        connection,
+        *,
+        timeout_seconds,
+        retry_attempts,
+    ):
+        attempts.append((connection.base_url, connection.use_https))
+        assert timeout_seconds == 20.0
+        assert retry_attempts == 3
+        return 4
+
+    monkeypatch.setattr(
+        "nas_index.qnap.client._test_qnap_connection",
+        fake_test_qnap_connection,
+    )
+
+    result = await probe_qnap_connection(
+        host="192.168.1.16",
+        port=5001,
+        username="indexer",
+        password="secret",
+        skip_tls_verify=True,
+    )
+
+    assert attempts == [("https://192.168.1.16", True)]
+    assert result == QnapProbeResult(
+        connection=NasConnection(
+            "https://192.168.1.16",
+            5001,
+            True,
+            "indexer",
+            "secret",
+            True,
+        ),
+        share_count=4,
+    )
+
+
+@pytest.mark.asyncio
+async def test_login_maps_certificate_verification_failure():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError(
+            "certificate verify failed: hostname mismatch",
+            request=request,
+        )
+
+    async with httpx.AsyncClient(
+        transport=httpx.MockTransport(handler)
+    ) as http:
+        with pytest.raises(
+            QnapTlsVerificationError,
+            match="证书校验失败",
+        ):
+            await QnapClient(
+                NasConnection(
+                    "https://nas.local",
+                    5001,
+                    True,
+                    "indexer",
+                    "secret",
+                ),
+                http=http,
+                retry_attempts=1,
+            ).login()

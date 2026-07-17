@@ -13,9 +13,11 @@ import httpx
 from nas_index.qnap.errors import (
     QnapAuthenticationError,
     QnapConnectionError,
+    QnapError,
     QnapPermissionError,
     QnapProtocolError,
     QnapSessionExpired,
+    QnapTlsVerificationError,
     QnapTwoStepRequired,
 )
 from nas_index.time import from_timestamp_beijing
@@ -35,6 +37,12 @@ class QnapThumbnail:
 class QnapFile:
     content: bytes
     media_type: str
+
+
+@dataclass(frozen=True, slots=True)
+class QnapProbeResult:
+    connection: NasConnection
+    share_count: int
 
 
 def canonical_path(value: str) -> str:
@@ -73,6 +81,78 @@ def _encode_query_value(value: object) -> str:
     if isinstance(value, bool):
         return "1" if value else "0"
     return str(value)
+
+
+def candidate_protocols(port: int) -> tuple[bool, bool]:
+    if port in {443, 5001}:
+        return (True, False)
+    return (False, True)
+
+
+async def _test_qnap_connection(
+    connection: NasConnection,
+    *,
+    timeout_seconds: float,
+    retry_attempts: int,
+) -> int:
+    async with QnapClient(
+        connection,
+        timeout_seconds=timeout_seconds,
+        retry_attempts=retry_attempts,
+    ) as client:
+        return len(await client.list_shares())
+
+
+async def probe_qnap_connection(
+    *,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    skip_tls_verify: bool,
+    timeout_seconds: float = 20.0,
+    retry_attempts: int = 3,
+) -> QnapProbeResult:
+    explicit_error: QnapError | None = None
+    tls_error: QnapTlsVerificationError | None = None
+    last_error: QnapError | None = None
+
+    for use_https in candidate_protocols(port):
+        protocol = "https" if use_https else "http"
+        connection = NasConnection(
+            base_url=f"{protocol}://{host.strip().rstrip('/')}",
+            port=port,
+            use_https=use_https,
+            username=username.strip(),
+            password=password,
+            skip_tls_verify=skip_tls_verify,
+        )
+        try:
+            share_count = await _test_qnap_connection(
+                connection,
+                timeout_seconds=timeout_seconds,
+                retry_attempts=retry_attempts,
+            )
+        except QnapTlsVerificationError as exc:
+            tls_error = exc
+            last_error = exc
+        except QnapError as exc:
+            last_error = exc
+            if not isinstance(exc, QnapConnectionError):
+                explicit_error = exc
+        else:
+            return QnapProbeResult(
+                connection=connection,
+                share_count=share_count,
+            )
+
+    if explicit_error is not None:
+        raise explicit_error
+    if tls_error is not None:
+        raise tls_error
+    if last_error is not None:
+        raise last_error
+    raise QnapConnectionError()
 
 
 def _build_request_url(
@@ -190,6 +270,11 @@ class QnapClient:
         self.http = http or httpx.AsyncClient(
             timeout=timeout_seconds,
             trust_env=False,
+            verify=(
+                False
+                if self.connection.skip_tls_verify
+                else True
+            ),
         )
         self._owns_http = http is None
         self.retry_attempts = max(1, min(retry_attempts, 3))
@@ -557,8 +642,12 @@ class QnapClient:
                 return response
             except (
                 httpx.TimeoutException,
-                httpx.ConnectError,
             ) as exc:
+                if attempt == len(delays):
+                    raise QnapConnectionError() from exc
+            except httpx.ConnectError as exc:
+                if _is_tls_verification_failure(exc):
+                    raise QnapTlsVerificationError() from exc
                 if attempt == len(delays):
                     raise QnapConnectionError() from exc
             except httpx.HTTPStatusError as exc:
@@ -594,3 +683,13 @@ class QnapClient:
 
     async def __aexit__(self, *_exc_info) -> None:
         await self.logout()
+
+
+def _is_tls_verification_failure(exc: httpx.ConnectError) -> bool:
+    message = str(exc).lower()
+    return (
+        "certificate verify failed" in message
+        or "hostname mismatch" in message
+        or "ssl" in message
+        and "certificate" in message
+    )
