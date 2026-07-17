@@ -28,6 +28,10 @@ def test_connection_test_token_matches_only_original_connection():
         token,
         replace(CONNECTION, port=5001),
     ) is False
+    assert store.matches(
+        token,
+        replace(CONNECTION, skip_tls_verify=True),
+    ) is False
 
 
 def test_connection_test_token_expires():

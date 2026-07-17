@@ -63,6 +63,7 @@ class ConnectionTestStore:
                 connection.use_https,
                 connection.username,
                 connection.password,
+                connection.skip_tls_verify,
             ],
             ensure_ascii=True,
             separators=(",", ":"),

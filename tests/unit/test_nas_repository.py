@@ -11,6 +11,7 @@ def test_create_and_update_nas_server(database):
             base_url="http://10.0.0.2",
             port=8080,
             use_https=False,
+            skip_tls_verify=False,
             enabled=True,
             sync_interval_minutes=15,
             username="indexer",
@@ -26,6 +27,7 @@ def test_create_and_update_nas_server(database):
         assert loaded is not None
         assert loaded.name == "Office NAS"
         assert loaded.sync_interval_minutes == 15
+        assert loaded.skip_tls_verify is False
         assert credential is not None
         assert credential.username == "indexer"
         assert credential.password == "secret"
@@ -36,6 +38,7 @@ def test_create_and_update_nas_server(database):
             base_url="https://nas.example.com",
             port=443,
             use_https=True,
+            skip_tls_verify=True,
             enabled=False,
             sync_interval_minutes=60,
             username="new-indexer",
@@ -46,6 +49,7 @@ def test_create_and_update_nas_server(database):
         credential = repository.get_credential(server.id)
         assert updated.name == "Office NAS Renamed"
         assert updated.enabled is False
+        assert updated.skip_tls_verify is True
         assert credential is not None
         assert credential.username == "new-indexer"
         assert credential.password == "secret"
@@ -59,6 +63,7 @@ def test_list_enabled_servers(database):
             base_url="http://enabled.local",
             port=8080,
             use_https=False,
+            skip_tls_verify=False,
             enabled=True,
             sync_interval_minutes=30,
             username="indexer",
@@ -69,6 +74,7 @@ def test_list_enabled_servers(database):
             base_url="http://disabled.local",
             port=8080,
             use_https=False,
+            skip_tls_verify=False,
             enabled=False,
             sync_interval_minutes=30,
             username="indexer",

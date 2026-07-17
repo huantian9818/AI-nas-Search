@@ -105,6 +105,8 @@ def _migrate_legacy_schema(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
         return
     table_names = set(inspect(engine).get_table_names())
+    if "nas_servers" in table_names:
+        _migrate_nas_servers_table(engine)
     if "entries" in table_names:
         _migrate_entries_table(engine)
     Base.metadata.create_all(engine)
@@ -231,6 +233,21 @@ def _migrate_entries_table(engine: Engine) -> None:
         )
 
 
+def _migrate_nas_servers_table(engine: Engine) -> None:
+    with engine.begin() as connection:
+        columns = {
+            row["name"]
+            for row in connection.execute(
+                text("PRAGMA table_info(nas_servers)")
+            ).mappings()
+        }
+        if "skip_tls_verify" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE nas_servers "
+                "ADD COLUMN skip_tls_verify BOOLEAN NOT NULL DEFAULT 0"
+            )
+
+
 def _migrate_single_nas_config(engine: Engine) -> None:
     with engine.begin() as connection:
         existing_server_id = connection.execute(
@@ -259,12 +276,12 @@ def _migrate_single_nas_config(engine: Engine) -> None:
             text(
                 """
                 INSERT INTO nas_servers (
-                    name, base_url, port, use_https, enabled,
+                    name, base_url, port, use_https, skip_tls_verify, enabled,
                     sync_interval_minutes, full_resync_interval_hours,
                     created_at, updated_at
                 )
                 VALUES (
-                    :name, :base_url, :port, :use_https, 1,
+                    :name, :base_url, :port, :use_https, 0, 1,
                     30, 24, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
                 )
                 """

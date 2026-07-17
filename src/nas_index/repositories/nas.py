@@ -21,6 +21,7 @@ class NasRepository:
         base_url: str,
         port: int,
         use_https: bool,
+        skip_tls_verify: bool = False,
         enabled: bool,
         sync_interval_minutes: int,
         username: str,
@@ -35,6 +36,7 @@ class NasRepository:
             base_url=base_url.rstrip("/"),
             port=port,
             use_https=use_https,
+            skip_tls_verify=skip_tls_verify,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
             created_at=now,
@@ -57,6 +59,7 @@ class NasRepository:
         base_url: str,
         port: int,
         use_https: bool,
+        skip_tls_verify: bool = False,
         enabled: bool,
         sync_interval_minutes: int,
         username: str,
@@ -71,6 +74,7 @@ class NasRepository:
         row.base_url = base_url.rstrip("/")
         row.port = port
         row.use_https = use_https
+        row.skip_tls_verify = skip_tls_verify
         row.enabled = enabled
         row.sync_interval_minutes = sync_interval_minutes
         row.updated_at = now
@@ -150,6 +154,7 @@ class NasRepository:
             base_url=row.base_url,
             port=row.port,
             use_https=row.use_https,
+            skip_tls_verify=row.skip_tls_verify,
             enabled=row.enabled,
             sync_interval_minutes=row.sync_interval_minutes,
         )

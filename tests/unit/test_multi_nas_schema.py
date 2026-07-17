@@ -18,6 +18,10 @@ def test_init_database_creates_multi_nas_tables(tmp_path):
         assert "share_sync_state" in inspector.get_table_names()
         assert "sync_runs" in inspector.get_table_names()
         assert "sync_errors" in inspector.get_table_names()
+        server_columns = {
+            column["name"]
+            for column in inspector.get_columns("nas_servers")
+        }
 
         entry_columns = {
             column["name"]
@@ -33,6 +37,7 @@ def test_init_database_creates_multi_nas_tables(tmp_path):
         assert "ix_entries_nas_parent_path" in entry_indexes
         assert "ix_entries_nas_entry_type" in entry_indexes
         assert "ix_entries_nas_generation" in entry_indexes
+        assert "skip_tls_verify" in server_columns
     finally:
         engine.dispose()
 
@@ -117,7 +122,7 @@ def test_init_database_migrates_single_nas_config_and_entries(
             server = connection.execute(
                 text(
                     """
-                    SELECT id, name, base_url, port
+                    SELECT id, name, base_url, port, skip_tls_verify
                     FROM nas_servers
                     """
                 )
@@ -147,6 +152,7 @@ def test_init_database_migrates_single_nas_config_and_entries(
         assert server["name"] == "nas.local"
         assert server["base_url"] == "http://nas.local"
         assert server["port"] == 8080
+        assert server["skip_tls_verify"] == 0
         assert credential["nas_id"] == server["id"]
         assert credential["username"] == "indexer"
         assert credential["password"] == "secret"

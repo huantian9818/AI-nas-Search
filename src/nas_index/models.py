@@ -40,6 +40,11 @@ class NasServer(Base):
     base_url: Mapped[str] = mapped_column(String(2048))
     port: Mapped[int] = mapped_column(Integer)
     use_https: Mapped[bool] = mapped_column(Boolean)
+    skip_tls_verify: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="0",
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
     legacy_full_resync_interval_hours: Mapped[int] = mapped_column(

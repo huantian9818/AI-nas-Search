@@ -9,6 +9,7 @@ class NasConnection:
     use_https: bool
     username: str
     password: str
+    skip_tls_verify: bool = False
 
     @property
     def endpoint(self) -> str:
@@ -22,6 +23,7 @@ class NasServerValue:
     base_url: str
     port: int
     use_https: bool
+    skip_tls_verify: bool
     enabled: bool
     sync_interval_minutes: int
 
@@ -37,6 +39,7 @@ class NasServerValue:
             use_https=self.use_https,
             username=username,
             password=password,
+            skip_tls_verify=self.skip_tls_verify,
         )
 
 

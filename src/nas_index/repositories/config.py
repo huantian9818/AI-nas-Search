@@ -37,6 +37,7 @@ class ConfigRepository:
                 base_url=value.base_url.rstrip("/"),
                 port=value.port,
                 use_https=value.use_https,
+                skip_tls_verify=value.skip_tls_verify,
                 enabled=True,
                 sync_interval_minutes=30,
                 username=value.username,
@@ -63,6 +64,7 @@ class ConfigRepository:
             base_url=value.base_url.rstrip("/"),
             port=value.port,
             use_https=value.use_https,
+            skip_tls_verify=value.skip_tls_verify,
             enabled=True,
             sync_interval_minutes=30,
             username=value.username,
@@ -81,4 +83,5 @@ class ConfigRepository:
             use_https=row.use_https,
             username=row.username,
             password=row.password,
+            skip_tls_verify=False,
         )
