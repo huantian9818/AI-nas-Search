@@ -28,7 +28,9 @@ from nas_index.types import UserAccess
 from nas_index.web.routes.browse import _expanded_paths
 from nas_index.web.routes.browse import _normalize_path
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.admin import current_admin
 from nas_index.web.routes.access import (
+    access_login_url,
     access_login_redirect,
     current_access,
 )
@@ -467,6 +469,42 @@ def search(
 ):
     access = current_access(request)
     if access is None:
+        if current_admin(request):
+            query = q.strip()
+            return request.app.state.templates.TemplateResponse(
+                request=request,
+                name="search.html",
+                context={
+                    "query": query,
+                    "results": Page([], 0, 1, 100),
+                    "selected": selected,
+                    "selected_result": None,
+                    "requested_selected": None,
+                    "selected_result_breadcrumbs": [],
+                    "selected_group_size": 0,
+                    "current_path": "/",
+                    "current_path_breadcrumbs": [],
+                    "result_groups": [],
+                    "tree_nodes": [],
+                    "result_start": 0,
+                    "result_end": 0,
+                    "total_pages": 0,
+                    "summary_payload": None,
+                    "breadcrumb_parts": _breadcrumb_parts,
+                    "highlight_match": _build_highlighter(
+                        query
+                    ),
+                    "format_size": _format_size,
+                    "format_modified": _format_modified,
+                    "is_thumbnail_candidate": (
+                        is_thumbnail_candidate
+                    ),
+                    "access_required": True,
+                    "access_login_url": access_login_url(
+                        request
+                    ),
+                },
+            )
         return access_login_redirect(request)
 
     query = q.strip()

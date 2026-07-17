@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from urllib.parse import quote
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
@@ -29,13 +30,20 @@ def _safe_next(value: str | None) -> str:
 
 
 def access_login_redirect(request: Request) -> RedirectResponse:
-    target = request.url.path
-    if request.url.query:
-        target = f"{target}?{request.url.query}"
     return RedirectResponse(
-        f"/access?next={quote(target, safe='')}",
+        access_login_url(request),
         status_code=303,
     )
+
+
+def access_login_url(request: Request) -> str:
+    target = request.url.path
+    if request.query_params:
+        target = (
+            f"{target}?"
+            f"{urlencode(request.query_params.multi_items())}"
+        )
+    return f"/access?next={quote(target, safe='%')}"
 
 
 @dataclass(frozen=True)

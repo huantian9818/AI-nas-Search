@@ -40,7 +40,9 @@
     </form>
   </section>
 
-  {% if query %}
+  {% if access_required %}
+    {% include "partials/access_required_notice.html" %}
+  {% elif query %}
     <section class="section-block">
       {% if results.total %}
         <p>共 {{ results.total }} 条结果，分布在 {{ result_groups | length }} 个目录。</p>

@@ -68,19 +68,19 @@ def test_dashboard_hides_sync_controls_from_non_admin(client):
 
 def test_dashboard_shows_sync_controls_to_admin(admin_client):
     nas_id = _create_nas(admin_client)
-    token = admin_client.app.state.access_store.create(
-        nas_id=nas_id,
-        username="alice",
-        share_paths=("/Public",),
-    )
-    admin_client.cookies.set("nas_access", token)
 
     response = admin_client.get("/")
 
     assert response.status_code == 200
+    assert 'aria-label="主导航"' in response.text
+    assert response.text.count('href="/"') >= 2
+    assert 'href="/browse"' in response.text
+    assert 'href="/search"' in response.text
     assert f'name="nas_id" value="{nas_id}"' in response.text
     assert "同步 Office" in response.text
     assert 'href="/settings"' in response.text
+    assert "退出管理员用户" in response.text
+    assert "退出当前用户" not in response.text
 
 
 def test_admin_login_requires_configured_password(tmp_path: Path):

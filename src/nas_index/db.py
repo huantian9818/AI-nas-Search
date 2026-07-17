@@ -201,6 +201,8 @@ def _migrate_entries_table(engine: Engine) -> None:
             connection.exec_driver_sql(
                 "ALTER TABLE entries ADD COLUMN share_path TEXT NOT NULL DEFAULT '/'"
             )
+        if _entries_has_legacy_full_path_unique_constraint(connection):
+            _rebuild_entries_table(connection)
         connection.exec_driver_sql(
             """
             CREATE UNIQUE INDEX IF NOT EXISTS uq_entries_nas_full_path
@@ -231,6 +233,74 @@ def _migrate_entries_table(engine: Engine) -> None:
             ON entries (nas_id, scan_generation)
             """
         )
+
+
+def _entries_has_legacy_full_path_unique_constraint(connection) -> bool:
+    indexes = connection.execute(
+        text("PRAGMA index_list(entries)")
+    ).mappings()
+    for index in indexes:
+        if not index["unique"]:
+            continue
+        name = index["name"]
+        columns = [
+            row["name"]
+            for row in connection.execute(
+                text(f"PRAGMA index_info('{name}')")
+            ).mappings()
+        ]
+        if columns == ["full_path"]:
+            return True
+    return False
+
+
+def _rebuild_entries_table(connection) -> None:
+    connection.exec_driver_sql("ALTER TABLE entries RENAME TO entries_legacy")
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE entries (
+            id INTEGER NOT NULL,
+            nas_id INTEGER NOT NULL DEFAULT 1,
+            share_path TEXT NOT NULL DEFAULT '/',
+            name TEXT NOT NULL,
+            full_path TEXT NOT NULL,
+            parent_path TEXT NOT NULL,
+            entry_type VARCHAR(16) NOT NULL,
+            size_bytes INTEGER,
+            modified_at DATETIME,
+            scan_generation INTEGER NOT NULL,
+            created_at DATETIME NOT NULL,
+            updated_at DATETIME NOT NULL,
+            PRIMARY KEY (id),
+            CONSTRAINT entry_type_values
+                CHECK (entry_type IN ('file', 'directory'))
+        )
+        """
+    )
+    connection.exec_driver_sql(
+        """
+        INSERT INTO entries (
+            id, nas_id, share_path, name, full_path, parent_path,
+            entry_type, size_bytes, modified_at, scan_generation,
+            created_at, updated_at
+        )
+        SELECT
+            id,
+            COALESCE(nas_id, 1),
+            COALESCE(NULLIF(share_path, ''), '/'),
+            name,
+            full_path,
+            parent_path,
+            entry_type,
+            size_bytes,
+            modified_at,
+            scan_generation,
+            created_at,
+            updated_at
+        FROM entries_legacy
+        """
+    )
+    connection.exec_driver_sql("DROP TABLE entries_legacy")
 
 
 def _migrate_nas_servers_table(engine: Engine) -> None:

@@ -108,6 +108,32 @@ def test_search_redirect_preserves_query_for_login(client):
     assert "%2Fsearch%3Fq%3D" in response.headers["location"]
 
 
+def test_browse_allows_admin_without_nas_access_and_shows_prompt(
+    admin_client,
+):
+    response = admin_client.get("/browse")
+
+    assert response.status_code == 200
+    assert "请先登录 NAS 用户" in response.text
+    assert 'href="/access?next=%2Fbrowse"' in response.text
+
+
+def test_search_allows_admin_without_nas_access_and_shows_prompt(
+    admin_client,
+):
+    response = admin_client.get(
+        "/search",
+        params={"q": "苹果"},
+    )
+
+    assert response.status_code == 200
+    assert "请先登录 NAS 用户" in response.text
+    assert (
+        'href="/access?next=%2Fsearch%3Fq%3D%E8%8B%B9%E6%9E%9C"'
+        in response.text
+    )
+
+
 def test_access_page_without_servers_tells_user_to_contact_admin(client):
     response = client.get("/access")
 
@@ -221,7 +247,12 @@ def test_navigation_hides_logout_without_user_session(client):
     response = client.get("/access")
 
     assert response.status_code == 200
+    assert 'aria-label="主导航"' not in response.text
+    assert 'href="/browse"' not in response.text
+    assert 'href="/search"' not in response.text
+    assert response.text.count('href="/"') == 1
     assert "退出当前用户" not in response.text
+    assert "退出管理员用户" not in response.text
     assert 'href="/access"' not in response.text
 
 
@@ -233,4 +264,9 @@ def test_navigation_hides_access_link_with_user_session(
 
     assert response.status_code == 200
     assert 'href="/access"' not in response.text
+    assert response.text.count('href="/"') == 1
+    assert 'href="/browse"' in response.text
+    assert 'href="/search"' in response.text
+    assert 'href="/settings"' not in response.text
     assert "退出当前用户" in response.text
+    assert "退出管理员用户" not in response.text

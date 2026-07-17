@@ -7,6 +7,9 @@
     <h1>目录</h1>
   </section>
 
+  {% if access_required %}
+    {% include "partials/access_required_notice.html" %}
+  {% else %}
   <div class="browser-layout">
     <aside class="section-block browse-sidebar">
       <p>共享目录</p>
@@ -191,6 +194,7 @@
       {% endif %}
     </section>
   </div>
+  {% endif %}
 </div>
 <script>
   (() => {

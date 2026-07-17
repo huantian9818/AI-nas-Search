@@ -9,16 +9,21 @@
   <script src="https://unpkg.com/htmx.org@2.0.4"></script>
 </head>
 <body>
+  {% set admin_logged_in = is_admin(request) %}
+  {% set user_access = current_access(request) %}
   <div class="site-shell">
     <header class="site-header">
       <p class="site-title">
         <a href="/">QNAP 文件索引</a>
       </p>
+      {% if admin_logged_in or user_access %}
       <nav class="site-nav" aria-label="主导航">
-        <a class="{% if request.url.path == '/' %}is-active{% endif %}"
-           href="/">
-          概览
-        </a>
+        {% if admin_logged_in %}
+          <a class="{% if request.url.path == '/' %}is-active{% endif %}"
+             href="/">
+            概览
+          </a>
+        {% endif %}
         <a class="{% if request.url.path.startswith('/browse') %}is-active{% endif %}"
            href="/browse">
           目录
@@ -27,20 +32,26 @@
            href="/search">
           搜索
         </a>
-        {% if current_access(request) %}
+        {% if user_access %}
           <form method="post"
                 action="/access/logout"
                 class="nav-action-form">
             <button type="submit">退出当前用户</button>
           </form>
         {% endif %}
-        {% if is_admin(request) %}
+        {% if admin_logged_in %}
           <a class="{% if request.url.path.startswith('/settings') %}is-active{% endif %}"
              href="/settings">
             设置
           </a>
+          <form method="post"
+                action="/admin/logout"
+                class="nav-action-form">
+            <button type="submit">退出管理员用户</button>
+          </form>
         {% endif %}
       </nav>
+      {% endif %}
     </header>
     <main class="page-shell">{% block content %}{% endblock %}</main>
   </div>

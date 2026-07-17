@@ -6,6 +6,7 @@ from nas_index.repositories.entries import EntryRepository
 from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.admin import current_admin
 from nas_index.web.routes.access import (
     access_login_redirect,
     current_access,
@@ -23,7 +24,10 @@ def dashboard(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    if current_access(request) is None:
+    if (
+        current_access(request) is None
+        and not current_admin(request)
+    ):
         return access_login_redirect(request)
 
     file_count, directory_count = (

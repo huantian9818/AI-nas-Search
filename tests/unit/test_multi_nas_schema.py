@@ -148,6 +148,31 @@ def test_init_database_migrates_single_nas_config_and_entries(
                 index["name"]
                 for index in inspector.get_indexes("entries")
             }
+            connection.execute(
+                text(
+                    """
+                    INSERT INTO entries (
+                        nas_id, share_path, name, full_path, parent_path,
+                        entry_type, size_bytes, modified_at, scan_generation,
+                        created_at, updated_at
+                    )
+                    VALUES (
+                        2, '/Public', 'Public', '/Public', '/',
+                        'directory', NULL, NULL, 2,
+                        CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                    )
+                    """
+                )
+            )
+            duplicate_count = connection.execute(
+                text(
+                    """
+                    SELECT count(*)
+                    FROM entries
+                    WHERE full_path = '/Public'
+                    """
+                )
+            ).scalar_one()
 
         assert server["name"] == "nas.local"
         assert server["base_url"] == "http://nas.local"
@@ -162,5 +187,6 @@ def test_init_database_migrates_single_nas_config_and_entries(
         assert "ix_entries_nas_parent_path" in entry_indexes
         assert "ix_entries_nas_entry_type" in entry_indexes
         assert "ix_entries_nas_generation" in entry_indexes
+        assert duplicate_count == 2
     finally:
         engine.dispose()

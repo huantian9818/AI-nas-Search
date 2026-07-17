@@ -10,7 +10,9 @@ from nas_index.repositories.entries import EntryRepository
 from nas_index.services.thumbnails import is_thumbnail_candidate
 from nas_index.types import UserAccess
 from nas_index.web.dependencies import get_session
+from nas_index.web.routes.admin import current_admin
 from nas_index.web.routes.access import (
+    access_login_url,
     access_login_redirect,
     current_access,
 )
@@ -141,6 +143,28 @@ def browse(
 ):
     access = current_access(request)
     if access is None:
+        if current_admin(request):
+            return request.app.state.templates.TemplateResponse(
+                request=request,
+                name="browse.html",
+                context={
+                    "path": _normalize_path(path),
+                    "search_mode": False,
+                    "search_query": q.strip(),
+                    "search_results": [],
+                    "search_total": 0,
+                    "selected": selected,
+                    "listing": None,
+                    "tree_nodes": [],
+                    "is_thumbnail_candidate": (
+                        is_thumbnail_candidate
+                    ),
+                    "access_required": True,
+                    "access_login_url": access_login_url(
+                        request
+                    ),
+                },
+            )
         return access_login_redirect(request)
 
     path = _normalize_path(path)
