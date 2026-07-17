@@ -107,13 +107,14 @@
                 启用同步
               </label>
               <label class="checkbox-line settings-checkbox">
-                <input name="use_https"
+                <input name="skip_tls_verify"
                        type="checkbox"
                        value="on"
                        data-connection-field
-                       {% if server.use_https %}checked{% endif %}>
-                HTTPS
+                       {% if server.skip_tls_verify %}checked{% endif %}>
+                忽略 HTTPS 证书校验
               </label>
+              <span class="plain-note">仅在 HTTPS 时生效</span>
               <button type="button"
                       data-test-connection>
                 测试连接
@@ -211,12 +212,13 @@
           启用同步
         </label>
         <label class="checkbox-line settings-checkbox">
-          <input name="use_https"
+          <input name="skip_tls_verify"
                  type="checkbox"
                  value="on"
                  data-connection-field>
-          HTTPS
+          忽略 HTTPS 证书校验
         </label>
+        <span class="plain-note">仅在 HTTPS 时生效</span>
         <button type="button"
                 data-test-connection>
           测试连接

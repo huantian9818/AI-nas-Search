@@ -18,7 +18,7 @@ class ConnectionTestStore:
     ):
         self.ttl_seconds = ttl_seconds
         self.now = now or now_beijing
-        self._tests: dict[str, tuple[str, datetime]] = {}
+        self._tests: dict[str, tuple[NasConnection, str, datetime]] = {}
 
     def create(self, connection: NasConnection) -> str:
         token = token_urlsafe(32)
@@ -26,10 +26,23 @@ class ConnectionTestStore:
             seconds=self.ttl_seconds
         )
         self._tests[token] = (
+            connection,
             self._fingerprint(connection),
             expires_at,
         )
         return token
+
+    def get(self, token: str | None) -> NasConnection | None:
+        if not token:
+            return None
+        tested = self._tests.get(token)
+        if tested is None:
+            return None
+        connection, _fingerprint, expires_at = tested
+        if expires_at <= self.now():
+            self._tests.pop(token, None)
+            return None
+        return connection
 
     def matches(
         self,
@@ -41,7 +54,7 @@ class ConnectionTestStore:
         tested = self._tests.get(token)
         if tested is None:
             return False
-        fingerprint, expires_at = tested
+        _stored_connection, fingerprint, expires_at = tested
         if expires_at <= self.now():
             self._tests.pop(token, None)
             return False

@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
-from nas_index.qnap.client import QnapClient
+from nas_index.config import AppSettings
+from nas_index.qnap.client import QnapProbeResult, probe_qnap_connection
 from nas_index.qnap.errors import QnapError
 from nas_index.repositories.config import ConfigRepository
 from nas_index.repositories.nas import NasRepository
@@ -23,24 +24,39 @@ def normalize_base_url(
     host: str,
     use_https: bool,
 ) -> str:
+    hostname = normalize_host(host)
+    protocol = "https" if use_https else "http"
+    return f"{protocol}://{hostname}"
+
+
+def normalize_host(host: str) -> str:
     host = host.strip().rstrip("/")
     parsed = urlsplit(
         host
         if "://" in host
         else f"//{host}"
     )
-    hostname = parsed.hostname or host
-    protocol = "https" if use_https else "http"
-    return f"{protocol}://{hostname}"
+    return parsed.hostname or host
 
 
 async def test_connection(
-    connection: NasConnection,
-) -> int:
-    async with QnapClient(connection) as client:
-        return len(
-            await client.list_shares()
-        )
+    *,
+    host: str,
+    port: int,
+    username: str,
+    password: str,
+    skip_tls_verify: bool,
+    settings: AppSettings,
+) -> QnapProbeResult:
+    return await probe_qnap_connection(
+        host=host,
+        port=port,
+        username=username,
+        password=password,
+        skip_tls_verify=skip_tls_verify,
+        timeout_seconds=settings.qnap_timeout_seconds,
+        retry_attempts=settings.qnap_retry_attempts,
+    )
 
 
 def _settings_context(
@@ -68,14 +84,15 @@ def _connection_from_form(
     host: str,
     port: int,
     use_https: bool,
+    skip_tls_verify: bool,
     username: str,
     password: str,
 ) -> NasConnection:
-    resolved_password = password
-    if not resolved_password and nas_id is not None:
-        credential = repository.get_credential(nas_id)
-        if credential is not None:
-            resolved_password = credential.password
+    resolved_password = resolve_password(
+        repository,
+        nas_id=nas_id,
+        password=password,
+    )
     if not resolved_password:
         raise ValueError("首次保存时必须输入索引账号密码")
     return NasConnection(
@@ -84,7 +101,22 @@ def _connection_from_form(
         use_https=use_https,
         username=username.strip(),
         password=resolved_password,
+        skip_tls_verify=skip_tls_verify,
     )
+
+
+def resolve_password(
+    repository: NasRepository,
+    *,
+    nas_id: int | None,
+    password: str,
+) -> str:
+    resolved_password = password
+    if not resolved_password and nas_id is not None:
+        credential = repository.get_credential(nas_id)
+        if credential is not None:
+            resolved_password = credential.password
+    return resolved_password
 
 
 def _settings_error(
@@ -131,7 +163,7 @@ def create_nas(
     name: str = Form(...),
     host: str = Form(...),
     port: int = Form(..., ge=1, le=65535),
-    use_https: bool = Form(False),
+    skip_tls_verify: bool = Form(False),
     enabled: bool = Form(False),
     sync_interval_minutes: int = Form(..., ge=1),
     username: str = Form(...),
@@ -145,12 +177,28 @@ def create_nas(
 
     repository = NasRepository(session)
     try:
+        if not resolve_password(
+            repository,
+            nas_id=None,
+            password=password,
+        ):
+            raise ValueError("首次保存时必须输入索引账号密码")
+        tested_connection = request.app.state.connection_test_store.get(
+            connection_test_token
+        )
+        if tested_connection is None:
+            return _settings_error(
+                request,
+                repository,
+                CONNECTION_TEST_REQUIRED,
+            )
         connection = _connection_from_form(
             repository,
             nas_id=None,
             host=host,
             port=port,
-            use_https=use_https,
+            use_https=tested_connection.use_https,
+            skip_tls_verify=skip_tls_verify,
             username=username,
             password=password,
         )
@@ -165,16 +213,14 @@ def create_nas(
             )
         repository.create_server(
             name=name,
-            base_url=normalize_base_url(
-                host,
-                use_https,
-            ),
+            base_url=connection.base_url,
             port=port,
-            use_https=use_https,
+            use_https=connection.use_https,
+            skip_tls_verify=connection.skip_tls_verify,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
             username=username,
-            password=password,
+            password=connection.password,
         )
     except ValueError as exc:
         return _settings_error(
@@ -201,7 +247,7 @@ async def test_nas_form_connection(
     nas_id: int | None = Form(None),
     host: str = Form(...),
     port: int = Form(..., ge=1, le=65535),
-    use_https: bool = Form(False),
+    skip_tls_verify: bool = Form(False),
     username: str = Form(...),
     password: str = Form(""),
     session: Session = Depends(get_session),
@@ -212,24 +258,30 @@ async def test_nas_form_connection(
 
     repository = NasRepository(session)
     try:
-        connection = _connection_from_form(
+        resolved_password = resolve_password(
             repository,
             nas_id=nas_id,
-            host=host,
-            port=port,
-            use_https=use_https,
-            username=username,
             password=password,
         )
-        share_count = await test_connection(connection)
+        if not resolved_password:
+            raise ValueError("首次保存时必须输入索引账号密码")
+        probe = await test_connection(
+            host=normalize_host(host),
+            port=port,
+            username=username.strip(),
+            password=resolved_password,
+            skip_tls_verify=skip_tls_verify,
+            settings=request.app.state.settings,
+        )
         token = request.app.state.connection_test_store.create(
-            connection
+            probe.connection
         )
         context = {
             "success": True,
             "message": (
-                "连接成功，可访问 "
-                f"{share_count} 个共享目录"
+                "连接成功"
+                f"（{'HTTPS' if probe.connection.use_https else 'HTTP'}），"
+                f"可访问 {probe.share_count} 个共享目录"
             ),
             "connection_test_token": token,
         }
@@ -261,7 +313,7 @@ def update_nas(
     name: str = Form(...),
     host: str = Form(...),
     port: int = Form(..., ge=1, le=65535),
-    use_https: bool = Form(False),
+    skip_tls_verify: bool = Form(False),
     enabled: bool = Form(False),
     sync_interval_minutes: int = Form(..., ge=1),
     username: str = Form(...),
@@ -275,12 +327,22 @@ def update_nas(
 
     repository = NasRepository(session)
     try:
+        tested_connection = request.app.state.connection_test_store.get(
+            connection_test_token
+        )
+        if tested_connection is None:
+            return _settings_error(
+                request,
+                repository,
+                CONNECTION_TEST_REQUIRED,
+            )
         connection = _connection_from_form(
             repository,
             nas_id=nas_id,
             host=host,
             port=port,
-            use_https=use_https,
+            use_https=tested_connection.use_https,
+            skip_tls_verify=skip_tls_verify,
             username=username,
             password=password,
         )
@@ -296,16 +358,14 @@ def update_nas(
         repository.update_server(
             nas_id,
             name=name,
-            base_url=normalize_base_url(
-                host,
-                use_https,
-            ),
+            base_url=connection.base_url,
             port=port,
-            use_https=use_https,
+            use_https=connection.use_https,
+            skip_tls_verify=connection.skip_tls_verify,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
             username=username,
-            password=password,
+            password=connection.password,
         )
     except (LookupError, ValueError) as exc:
         return _settings_error(
@@ -324,7 +384,7 @@ def update_nas(
 
 
 @router.post("/settings")
-def save_settings(
+async def save_settings(
     request: Request,
     host: str = Form(...),
     port: int = Form(..., ge=1, le=65535),
@@ -339,18 +399,15 @@ def save_settings(
 
     repository = ConfigRepository(session)
     try:
-        repository.save(
-            NasConnection(
-                normalize_base_url(
-                    host,
-                    use_https,
-                ),
-                port,
-                use_https,
-                username,
-                password,
-            )
+        probe = await test_connection(
+            host=normalize_host(host),
+            port=port,
+            username=username.strip(),
+            password=password,
+            skip_tls_verify=False,
+            settings=request.app.state.settings,
         )
+        repository.save(probe.connection)
     except ValueError as exc:
         return request.app.state.templates.TemplateResponse(
             request=request,
@@ -388,14 +445,20 @@ async def connection_test(
         }
     else:
         try:
-            share_count = await test_connection(
-                config
+            probe = await test_connection(
+                host=normalize_host(config.base_url),
+                port=config.port,
+                username=config.username,
+                password=config.password,
+                skip_tls_verify=config.skip_tls_verify,
+                settings=request.app.state.settings,
             )
             context = {
                 "success": True,
                 "message": (
-                    "连接成功，可访问 "
-                    f"{share_count} 个共享目录"
+                    "连接成功"
+                    f"（{'HTTPS' if probe.connection.use_https else 'HTTP'}），"
+                    f"可访问 {probe.share_count} 个共享目录"
                 ),
             }
         except QnapError as exc:

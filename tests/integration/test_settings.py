@@ -2,6 +2,7 @@ import re
 
 from sqlalchemy.orm import Session
 
+from nas_index.qnap.client import QnapProbeResult
 from nas_index.repositories.nas import NasRepository
 from nas_index.types import NasConnection
 
@@ -26,6 +27,7 @@ def _tested_token(
     use_https: bool,
     username: str,
     password: str,
+    skip_tls_verify: bool = False,
 ) -> str:
     return client.app.state.connection_test_store.create(
         NasConnection(
@@ -38,6 +40,7 @@ def _tested_token(
             use_https=use_https,
             username=username,
             password=password,
+            skip_tls_verify=skip_tls_verify,
         )
     )
 
@@ -89,6 +92,7 @@ def test_settings_can_update_nas_and_preserve_blank_password(admin_client):
         use_https=True,
         username="indexer2",
         password="secret",
+        skip_tls_verify=True,
     )
 
     response = admin_client.post(
@@ -97,7 +101,7 @@ def test_settings_can_update_nas_and_preserve_blank_password(admin_client):
             "name": "Office Updated",
             "host": "updated.local",
             "port": "8443",
-            "use_https": "on",
+            "skip_tls_verify": "on",
             "enabled": "on",
             "sync_interval_minutes": "10",
             "username": "indexer2",
@@ -116,6 +120,8 @@ def test_settings_can_update_nas_and_preserve_blank_password(admin_client):
     assert server.name == "Office Updated"
     assert server.base_url == "https://updated.local"
     assert server.port == 8443
+    assert server.use_https is True
+    assert server.skip_tls_verify is True
     assert server.sync_interval_minutes == 10
     assert credential.username == "indexer2"
     assert credential.password == "secret"
@@ -143,6 +149,10 @@ def test_settings_page_groups_nas_forms_for_scanning_workflow(admin_client):
     assert "新增 NAS" in response.text
     assert "完整重扫间隔" not in response.text
     assert "同步间隔（分钟）" in response.text
+    assert 'name="use_https"' not in response.text
+    assert 'name="skip_tls_verify"' in response.text
+    assert "忽略 HTTPS 证书校验" in response.text
+    assert "仅在 HTTPS 时生效" in response.text
 
 
 def test_settings_css_uses_responsive_management_layout(client):
@@ -214,8 +224,32 @@ def test_current_form_connection_test_issues_save_token(
     admin_client,
     monkeypatch,
 ):
-    async def succeed(_connection):
-        return 3
+    async def succeed(
+        *,
+        host,
+        port,
+        username,
+        password,
+        skip_tls_verify,
+        settings,
+    ):
+        assert host == "office.local"
+        assert port == 8080
+        assert username == "indexer"
+        assert password == "secret"
+        assert skip_tls_verify is False
+        assert settings is admin_client.app.state.settings
+        return QnapProbeResult(
+            connection=NasConnection(
+                "http://office.local",
+                8080,
+                False,
+                "indexer",
+                "secret",
+                False,
+            ),
+            share_count=3,
+        )
 
     monkeypatch.setattr(
         "nas_index.web.routes.settings.test_connection",
@@ -228,7 +262,7 @@ def test_current_form_connection_test_issues_save_token(
     )
 
     assert response.status_code == 200
-    assert "连接成功，可访问 3 个共享目录" in response.text
+    assert "连接成功（HTTP），可访问 3 个共享目录" in response.text
     match = re.search(
         r'name="connection_test_token"\s+value="([^"]+)"',
         response.text,
@@ -243,6 +277,84 @@ def test_current_form_connection_test_issues_save_token(
         follow_redirects=False,
     )
     assert save.status_code == 303
+
+
+def test_connection_test_autodetects_https_and_saves_final_protocol(
+    admin_client,
+    monkeypatch,
+):
+    async def succeed(
+        *,
+        host,
+        port,
+        username,
+        password,
+        skip_tls_verify,
+        settings,
+    ):
+        assert host == "192.168.1.16"
+        assert port == 5001
+        assert skip_tls_verify is True
+        assert settings is admin_client.app.state.settings
+        return QnapProbeResult(
+            connection=NasConnection(
+                "https://192.168.1.16",
+                5001,
+                True,
+                username,
+                password,
+                True,
+            ),
+            share_count=6,
+        )
+
+    monkeypatch.setattr(
+        "nas_index.web.routes.settings.test_connection",
+        succeed,
+    )
+
+    response = admin_client.post(
+        "/settings/nas/test",
+        data={
+            **_nas_form("Factory"),
+            "host": "192.168.1.16",
+            "port": "5001",
+            "skip_tls_verify": "on",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "连接成功（HTTPS），可访问 6 个共享目录" in response.text
+    match = re.search(
+        r'name="connection_test_token"\s+value="([^"]+)"',
+        response.text,
+    )
+    assert match is not None
+
+    save = admin_client.post(
+        "/settings/nas",
+        data={
+            **_nas_form("Factory"),
+            "host": "192.168.1.16",
+            "port": "5001",
+            "skip_tls_verify": "on",
+            "connection_test_token": match.group(1),
+        },
+        follow_redirects=False,
+    )
+
+    assert save.status_code == 303
+
+    with Session(admin_client.app.state.engine) as session:
+        server = next(
+            server
+            for server in NasRepository(session).list_servers()
+            if server.name == "Factory"
+        )
+
+    assert server.base_url == "https://192.168.1.16"
+    assert server.use_https is True
+    assert server.skip_tls_verify is True
 
 
 def test_connection_test_token_rejects_changed_connection(
@@ -275,9 +387,32 @@ def test_existing_nas_connection_test_uses_saved_password_when_blank(
     nas_id = _create_nas(admin_client)
     seen_passwords = []
 
-    async def succeed(connection):
-        seen_passwords.append(connection.password)
-        return 2
+    async def succeed(
+        *,
+        host,
+        port,
+        username,
+        password,
+        skip_tls_verify,
+        settings,
+    ):
+        seen_passwords.append(password)
+        assert host == "office.local"
+        assert port == 8080
+        assert username == "indexer"
+        assert skip_tls_verify is False
+        assert settings is admin_client.app.state.settings
+        return QnapProbeResult(
+            connection=NasConnection(
+                "http://office.local",
+                8080,
+                False,
+                username,
+                password,
+                False,
+            ),
+            share_count=2,
+        )
 
     monkeypatch.setattr(
         "nas_index.web.routes.settings.test_connection",
