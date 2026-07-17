@@ -94,6 +94,16 @@ def test_dashboard_redirects_to_access_without_session(client):
     assert response.headers["location"] == "/access?next=%2F"
 
 
+def test_dashboard_redirects_user_session_to_browse(
+    client,
+    web_public_access,
+):
+    response = client.get("/", follow_redirects=False)
+
+    assert response.status_code == 303
+    assert response.headers["location"] == "/browse"
+
+
 def test_search_redirect_preserves_query_for_login(client):
     response = client.get(
         "/search",
@@ -264,7 +274,7 @@ def test_navigation_hides_access_link_with_user_session(
 
     assert response.status_code == 200
     assert 'href="/access"' not in response.text
-    assert response.text.count('href="/"') == 1
+    assert 'href="/"' not in response.text
     assert 'href="/browse"' in response.text
     assert 'href="/search"' in response.text
     assert 'href="/settings"' not in response.text

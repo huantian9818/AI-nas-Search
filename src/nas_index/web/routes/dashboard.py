@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from nas_index.repositories.entries import EntryRepository
@@ -24,11 +25,15 @@ def dashboard(
     request: Request,
     session: Session = Depends(get_session),
 ):
-    if (
-        current_access(request) is None
-        and not current_admin(request)
-    ):
+    access = current_access(request)
+    is_admin = current_admin(request)
+    if access is None and not is_admin:
         return access_login_redirect(request)
+    if access is not None and not is_admin:
+        return RedirectResponse(
+            "/browse",
+            status_code=303,
+        )
 
     file_count, directory_count = (
         EntryRepository(session).counts()

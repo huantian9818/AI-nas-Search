@@ -11,10 +11,11 @@
 <body>
   {% set admin_logged_in = is_admin(request) %}
   {% set user_access = current_access(request) %}
+  {% set title_href = "/" if admin_logged_in else ("/browse" if user_access else "/") %}
   <div class="site-shell">
     <header class="site-header">
       <p class="site-title">
-        <a href="/">QNAP 文件索引</a>
+        <a href="{{ title_href }}">QNAP 文件索引</a>
       </p>
       {% if admin_logged_in or user_access %}
       <nav class="site-nav" aria-label="主导航">

@@ -29,10 +29,10 @@ def _create_nas(session: Session, name: str) -> int:
 
 
 def test_dashboard_displays_counts(
-    client,
+    admin_client,
     web_seeded_entries,
 ):
-    response = client.get("/")
+    response = admin_client.get("/")
 
     assert response.status_code == 200
     assert "文件" in response.text
@@ -57,7 +57,7 @@ def test_dashboard_displays_per_nas_scan_controls(admin_client):
     assert f"/scans/status?nas_id={lab_id}" in response.text
 
 
-def test_dashboard_displays_last_successful_sync(client):
+def test_dashboard_displays_last_successful_sync(admin_client):
     finished = datetime(
         2026,
         6,
@@ -66,7 +66,7 @@ def test_dashboard_displays_last_successful_sync(client):
         30,
         tzinfo=UTC,
     )
-    with Session(client.app.state.engine) as session:
+    with Session(admin_client.app.state.engine) as session:
         nas_id = _create_nas(session, "Office")
         session.add(
             SyncRun(
@@ -83,9 +83,8 @@ def test_dashboard_displays_last_successful_sync(client):
             )
         )
         session.commit()
-    _grant_access(client, nas_id)
 
-    response = client.get("/")
+    response = admin_client.get("/")
 
     assert "最后成功同步" in response.text
     assert "2026-06-12" in response.text
