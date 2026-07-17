@@ -89,3 +89,30 @@ def test_list_enabled_servers(database):
         ]
 
     assert names == ["Enabled"]
+
+
+def test_connection_for_indexer_preserves_skip_tls_verify(database):
+    with Session(database) as session:
+        repository = NasRepository(session)
+        server = repository.create_server(
+            name="TLS NAS",
+            base_url="https://nas.local",
+            port=5001,
+            use_https=True,
+            skip_tls_verify=True,
+            enabled=True,
+            sync_interval_minutes=30,
+            username="indexer",
+            password="secret",
+        )
+        session.commit()
+
+    with Session(database) as session:
+        connection = NasRepository(session).connection_for_indexer(
+            server.id
+        )
+
+    assert connection is not None
+    assert connection.base_url == "https://nas.local"
+    assert connection.use_https is True
+    assert connection.skip_tls_verify is True
