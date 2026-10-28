@@ -434,3 +434,12 @@ def test_existing_nas_connection_test_uses_saved_password_when_blank(
     assert response.status_code == 200
     assert seen_passwords == ["secret"]
     assert 'name="connection_test_token"' in response.text
+
+
+def test_settings_page_exposes_scan_transport_fields(admin_client):
+    response = admin_client.get("/settings")
+
+    assert response.status_code == 200
+    assert 'name="scan_transport"' in response.text
+    assert 'name="webdav_port"' in response.text
+    assert 'name="webdav_use_https"' in response.text

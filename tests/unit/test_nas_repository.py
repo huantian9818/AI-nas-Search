@@ -116,3 +116,56 @@ def test_connection_for_indexer_preserves_skip_tls_verify(database):
     assert connection.base_url == "https://nas.local"
     assert connection.use_https is True
     assert connection.skip_tls_verify is True
+
+
+def test_create_server_with_webdav_transport(database):
+    with Session(database) as session:
+        repository = NasRepository(session)
+        server = repository.create_server(
+            name="WebDAV NAS",
+            base_url="http://nas.local",
+            port=8080,
+            use_https=False,
+            skip_tls_verify=False,
+            enabled=True,
+            sync_interval_minutes=30,
+            username="indexer",
+            password="secret",
+            scan_transport="webdav",
+            webdav_port=5007,
+            webdav_use_https=False,
+        )
+        session.commit()
+
+    with Session(database) as session:
+        repository = NasRepository(session)
+        loaded = repository.get_server(server.id)
+        connection = repository.webdav_connection_for_indexer(
+            server.id
+        )
+
+        assert loaded is not None
+        assert loaded.scan_transport == "webdav"
+        assert loaded.webdav_port == 5007
+        assert loaded.webdav_use_https is False
+        assert connection is not None
+        assert connection.endpoint == "http://nas.local:5007"
+
+        repository.update_server(
+            server.id,
+            name="WebDAV NAS",
+            base_url="http://nas.local",
+            port=8080,
+            use_https=False,
+            skip_tls_verify=False,
+            enabled=True,
+            sync_interval_minutes=30,
+            username="indexer",
+            password="",
+        )
+        session.commit()
+        preserved = repository.get_server(server.id)
+
+    assert preserved is not None
+    assert preserved.scan_transport == "webdav"
+    assert preserved.webdav_port == 5007

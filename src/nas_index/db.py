@@ -378,6 +378,22 @@ def _migrate_nas_servers_table(engine: Engine) -> None:
                 "ALTER TABLE nas_servers "
                 "ADD COLUMN skip_tls_verify BOOLEAN NOT NULL DEFAULT 0"
             )
+        if "scan_transport" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE nas_servers "
+                "ADD COLUMN scan_transport VARCHAR(16) "
+                "NOT NULL DEFAULT 'file_station'"
+            )
+        if "webdav_port" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE nas_servers "
+                "ADD COLUMN webdav_port INTEGER"
+            )
+        if "webdav_use_https" not in columns:
+            connection.exec_driver_sql(
+                "ALTER TABLE nas_servers "
+                "ADD COLUMN webdav_use_https BOOLEAN NOT NULL DEFAULT 0"
+            )
 
 
 def _migrate_single_nas_config(engine: Engine) -> None:

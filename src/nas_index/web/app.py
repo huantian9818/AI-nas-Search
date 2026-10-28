@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+import logging
 from pathlib import Path
 from secrets import token_bytes
 
@@ -15,12 +16,14 @@ from nas_index.db import (
 )
 from nas_index.logging import configure_logging
 from nas_index.qnap.client import QnapClient
+from nas_index.qnap.webdav import WebdavClient
 from nas_index.repositories.nas import NasRepository
 from nas_index.repositories.syncs import SyncRepository
 from nas_index.services.admin import AdminSessionStore
 from nas_index.services.access import AccessSessionStore
 from nas_index.services.connection_tests import ConnectionTestStore
 from nas_index.services.process_monitor import ProcessMonitor
+from nas_index.services.scan_clients import WebdavScanClient
 from nas_index.services.scan_rate import ScanRateTracker
 from nas_index.services.scanner import Scanner
 from nas_index.services.search_summary import OpenAIChatSearchSummarizer
@@ -36,6 +39,9 @@ from nas_index.web.routes import scans as scan_routes
 from nas_index.web.routes import search as search_routes
 from nas_index.web.routes import settings as settings_routes
 from nas_index.web.routes import thumbnails as thumbnail_routes
+
+
+LOGGER = logging.getLogger(__name__)
 
 
 def create_app(settings: AppSettings | None = None) -> FastAPI:
@@ -104,29 +110,68 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
 
     def scanner_factory(nas_id: int) -> Scanner:
         with Session(engine) as session:
-            connection = NasRepository(
-                session
-            ).connection_for_indexer(nas_id)
+            repository = NasRepository(session)
+            server = repository.get_server(nas_id)
+            connection = (
+                repository.connection_for_indexer(nas_id)
+            )
+            webdav_connection = (
+                repository.webdav_connection_for_indexer(
+                    nas_id
+                )
+            )
         if connection is None:
             raise RuntimeError(
                 "NAS configuration is missing"
             )
-        return Scanner(
-            engine=engine,
-            nas_id=nas_id,
-            client_factory=lambda: QnapClient(
-                connection,
+        max_connections = max(
+            4,
+            settings.scan_concurrency * 2,
+        )
+        qnap_client = QnapClient(
+            connection,
+            timeout_seconds=(
+                settings.qnap_timeout_seconds
+            ),
+            retry_attempts=(
+                settings.qnap_retry_attempts
+            ),
+            max_connections=max_connections,
+        )
+        if (
+            server is not None
+            and server.scan_transport == "webdav"
+            and webdav_connection is not None
+        ):
+            listing_client = WebdavClient(
+                webdav_connection,
                 timeout_seconds=(
                     settings.qnap_timeout_seconds
                 ),
                 retry_attempts=(
                     settings.qnap_retry_attempts
                 ),
-                max_connections=max(
-                    4,
-                    settings.scan_concurrency * 2,
-                ),
-            ),
+                max_connections=max_connections,
+            )
+            client_factory = lambda: WebdavScanClient(
+                qnap_client,
+                listing_client,
+            )
+        else:
+            if (
+                server is not None
+                and server.scan_transport == "webdav"
+            ):
+                LOGGER.warning(
+                    "NAS %s uses webdav transport without a "
+                    "webdav port; falling back to File Station",
+                    nas_id,
+                )
+            client_factory = lambda: qnap_client
+        return Scanner(
+            engine=engine,
+            nas_id=nas_id,
+            client_factory=client_factory,
             page_size=settings.scan_page_size,
             batch_size=settings.scan_batch_size,
             concurrency=settings.scan_concurrency,

@@ -18,6 +18,39 @@ router = APIRouter()
 CONNECTION_TEST_REQUIRED = (
     "请先使用当前连接信息测试成功后再保存"
 )
+SCAN_TRANSPORTS = {"file_station", "webdav"}
+
+
+def _scan_transport_values(
+    *,
+    scan_transport: str,
+    webdav_port: str,
+    webdav_use_https: bool,
+) -> dict[str, object]:
+    if scan_transport not in SCAN_TRANSPORTS:
+        raise ValueError("扫描方式无效")
+    port: int | None = None
+    raw_port = webdav_port.strip()
+    if raw_port:
+        try:
+            port = int(raw_port)
+        except ValueError as exc:
+            raise ValueError(
+                "WebDAV 端口必须是数字"
+            ) from exc
+        if not 1 <= port <= 65535:
+            raise ValueError(
+                "WebDAV 端口必须在 1-65535 之间"
+            )
+    if scan_transport == "webdav" and port is None:
+        raise ValueError(
+            "启用 WebDAV 扫描时必须填写 WebDAV 端口"
+        )
+    return {
+        "scan_transport": scan_transport,
+        "webdav_port": port,
+        "webdav_use_https": webdav_use_https,
+    }
 
 
 def normalize_base_url(
@@ -168,6 +201,9 @@ def create_nas(
     sync_interval_minutes: int = Form(..., ge=1),
     username: str = Form(...),
     password: str = Form(""),
+    scan_transport: str = Form("file_station"),
+    webdav_port: str = Form(""),
+    webdav_use_https: bool = Form(False),
     connection_test_token: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -177,6 +213,11 @@ def create_nas(
 
     repository = NasRepository(session)
     try:
+        scan_values = _scan_transport_values(
+            scan_transport=scan_transport,
+            webdav_port=webdav_port,
+            webdav_use_https=webdav_use_https,
+        )
         if not resolve_password(
             repository,
             nas_id=None,
@@ -221,6 +262,7 @@ def create_nas(
             sync_interval_minutes=sync_interval_minutes,
             username=username,
             password=connection.password,
+            **scan_values,
         )
     except ValueError as exc:
         return _settings_error(
@@ -318,6 +360,9 @@ def update_nas(
     sync_interval_minutes: int = Form(..., ge=1),
     username: str = Form(...),
     password: str = Form(""),
+    scan_transport: str = Form("file_station"),
+    webdav_port: str = Form(""),
+    webdav_use_https: bool = Form(False),
     connection_test_token: str = Form(""),
     session: Session = Depends(get_session),
 ):
@@ -327,6 +372,11 @@ def update_nas(
 
     repository = NasRepository(session)
     try:
+        scan_values = _scan_transport_values(
+            scan_transport=scan_transport,
+            webdav_port=webdav_port,
+            webdav_use_https=webdav_use_https,
+        )
         tested_connection = request.app.state.connection_test_store.get(
             connection_test_token
         )
@@ -366,6 +416,7 @@ def update_nas(
             sync_interval_minutes=sync_interval_minutes,
             username=username,
             password=connection.password,
+            **scan_values,
         )
     except (LookupError, ValueError) as exc:
         return _settings_error(

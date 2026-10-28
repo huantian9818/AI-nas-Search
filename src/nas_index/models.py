@@ -45,6 +45,17 @@ class NasServer(Base):
         default=False,
         server_default="0",
     )
+    scan_transport: Mapped[str] = mapped_column(
+        String(16),
+        default="file_station",
+        server_default="file_station",
+    )
+    webdav_port: Mapped[int | None] = mapped_column(Integer)
+    webdav_use_https: Mapped[bool] = mapped_column(
+        Boolean,
+        default=False,
+        server_default="0",
+    )
     enabled: Mapped[bool] = mapped_column(Boolean, default=True)
     sync_interval_minutes: Mapped[int] = mapped_column(Integer, default=30)
     legacy_full_resync_interval_hours: Mapped[int] = mapped_column(
@@ -69,6 +80,10 @@ class NasServer(Base):
         CheckConstraint(
             "sync_interval_minutes >= 1",
             name="nas_server_sync_interval_positive",
+        ),
+        CheckConstraint(
+            "scan_transport IN ('file_station', 'webdav')",
+            name="nas_server_scan_transport_values",
         ),
     )
 

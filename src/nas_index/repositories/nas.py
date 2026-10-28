@@ -26,6 +26,9 @@ class NasRepository:
         sync_interval_minutes: int,
         username: str,
         password: str,
+        scan_transport: str = "file_station",
+        webdav_port: int | None = None,
+        webdav_use_https: bool = False,
     ) -> NasServerValue:
         if not password:
             raise ValueError("首次保存时必须输入索引账号密码")
@@ -37,6 +40,9 @@ class NasRepository:
             port=port,
             use_https=use_https,
             skip_tls_verify=skip_tls_verify,
+            scan_transport=scan_transport,
+            webdav_port=webdav_port,
+            webdav_use_https=webdav_use_https,
             enabled=enabled,
             sync_interval_minutes=sync_interval_minutes,
             created_at=now,
@@ -64,6 +70,9 @@ class NasRepository:
         sync_interval_minutes: int,
         username: str,
         password: str,
+        scan_transport: str | None = None,
+        webdav_port: int | None = None,
+        webdav_use_https: bool | None = None,
     ) -> NasServerValue:
         row = self.session.get(NasServer, nas_id)
         if row is None:
@@ -77,6 +86,11 @@ class NasRepository:
         row.skip_tls_verify = skip_tls_verify
         row.enabled = enabled
         row.sync_interval_minutes = sync_interval_minutes
+        if scan_transport is not None:
+            row.scan_transport = scan_transport
+            row.webdav_port = webdav_port
+            if webdav_use_https is not None:
+                row.webdav_use_https = webdav_use_https
         row.updated_at = now
 
         credential = row.credential
@@ -146,6 +160,19 @@ class NasRepository:
             password=credential.password,
         )
 
+    def webdav_connection_for_indexer(
+        self,
+        nas_id: int,
+    ) -> NasConnection | None:
+        server = self.get_server(nas_id)
+        credential = self.get_credential(nas_id)
+        if server is None or credential is None:
+            return None
+        return server.to_webdav_connection(
+            username=credential.username,
+            password=credential.password,
+        )
+
     @staticmethod
     def _server_value(row: NasServer) -> NasServerValue:
         return NasServerValue(
@@ -157,4 +184,7 @@ class NasRepository:
             skip_tls_verify=row.skip_tls_verify,
             enabled=row.enabled,
             sync_interval_minutes=row.sync_interval_minutes,
+            scan_transport=row.scan_transport,
+            webdav_port=row.webdav_port,
+            webdav_use_https=row.webdav_use_https,
         )

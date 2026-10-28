@@ -98,6 +98,42 @@
               </label>
             </div>
 
+            <div class="settings-fields-secondary">
+              <label>
+                扫描方式
+                <select name="scan_transport">
+                  <option value="file_station"
+                          {% if server.scan_transport != 'webdav' %}selected{% endif %}>
+                    File Station
+                  </option>
+                  <option value="webdav"
+                          {% if server.scan_transport == 'webdav' %}selected{% endif %}>
+                    WebDAV
+                  </option>
+                </select>
+              </label>
+              <label>
+                WebDAV 端口
+                <input name="webdav_port"
+                       type="number"
+                       min="1"
+                       max="65535"
+                       value="{{ server.webdav_port or '' }}"
+                       placeholder="5007">
+              </label>
+              <label class="checkbox-line settings-checkbox">
+                <input name="webdav_use_https"
+                       type="checkbox"
+                       value="on"
+                       {% if server.webdav_use_https %}checked{% endif %}>
+                WebDAV 使用 HTTPS
+              </label>
+            </div>
+            <p class="plain-note">
+              WebDAV 用于加速目录遍历；登录和权限校验仍走 File Station。
+              需要先在 NAS 控制台启用 WebDAV。
+            </p>
+
             <div class="settings-actions">
               <label class="checkbox-line settings-checkbox">
                 <input name="enabled"
@@ -202,6 +238,34 @@
                  required>
         </label>
       </div>
+
+      <div class="settings-fields-secondary">
+        <label>
+          扫描方式
+          <select name="scan_transport">
+            <option value="file_station" selected>File Station</option>
+            <option value="webdav">WebDAV</option>
+          </select>
+        </label>
+        <label>
+          WebDAV 端口
+          <input name="webdav_port"
+                 type="number"
+                 min="1"
+                 max="65535"
+                 placeholder="5007">
+        </label>
+        <label class="checkbox-line settings-checkbox">
+          <input name="webdav_use_https"
+                 type="checkbox"
+                 value="on">
+          WebDAV 使用 HTTPS
+        </label>
+      </div>
+      <p class="plain-note">
+        WebDAV 用于加速目录遍历；登录和权限校验仍走 File Station。
+        需要先在 NAS 控制台启用 WebDAV。
+      </p>
 
       <div class="settings-actions">
         <label class="checkbox-line settings-checkbox">

@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
+from urllib.parse import urlsplit
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,9 @@ class NasServerValue:
     skip_tls_verify: bool
     enabled: bool
     sync_interval_minutes: int
+    scan_transport: str = "file_station"
+    webdav_port: int | None = None
+    webdav_use_https: bool = False
 
     def to_connection(
         self,
@@ -37,6 +41,27 @@ class NasServerValue:
             base_url=self.base_url,
             port=self.port,
             use_https=self.use_https,
+            username=username,
+            password=password,
+            skip_tls_verify=self.skip_tls_verify,
+        )
+
+    def to_webdav_connection(
+        self,
+        *,
+        username: str,
+        password: str,
+    ) -> NasConnection | None:
+        if self.webdav_port is None:
+            return None
+        host = urlsplit(self.base_url).hostname
+        if not host:
+            return None
+        scheme = "https" if self.webdav_use_https else "http"
+        return NasConnection(
+            base_url=f"{scheme}://{host}",
+            port=self.webdav_port,
+            use_https=self.webdav_use_https,
             username=username,
             password=password,
             skip_tls_verify=self.skip_tls_verify,

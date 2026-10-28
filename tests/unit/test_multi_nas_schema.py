@@ -190,3 +190,73 @@ def test_init_database_migrates_single_nas_config_and_entries(
         assert duplicate_count == 2
     finally:
         engine.dispose()
+
+
+def test_init_database_adds_webdav_columns_to_legacy_nas_servers(
+    tmp_path,
+):
+    engine = create_database_engine(
+        f"sqlite:///{tmp_path / 'legacy-webdav.db'}"
+    )
+    try:
+        with engine.begin() as connection:
+            connection.exec_driver_sql(
+                """
+                CREATE TABLE nas_servers (
+                    id INTEGER PRIMARY KEY,
+                    name VARCHAR(255) NOT NULL,
+                    base_url VARCHAR(2048) NOT NULL,
+                    port INTEGER NOT NULL,
+                    use_https BOOLEAN NOT NULL,
+                    enabled BOOLEAN NOT NULL,
+                    sync_interval_minutes INTEGER NOT NULL,
+                    full_resync_interval_hours INTEGER NOT NULL,
+                    created_at DATETIME NOT NULL,
+                    updated_at DATETIME NOT NULL
+                )
+                """
+            )
+            connection.exec_driver_sql(
+                """
+                INSERT INTO nas_servers (
+                    id, name, base_url, port, use_https, enabled,
+                    sync_interval_minutes, full_resync_interval_hours,
+                    created_at, updated_at
+                )
+                VALUES (
+                    1, 'Legacy', 'http://nas.local', 8080, 0, 1,
+                    30, 24, '2026-01-01 00:00:00', '2026-01-01 00:00:00'
+                )
+                """
+            )
+
+        init_database(engine)
+
+        with engine.connect() as connection:
+            columns = {
+                row[1]
+                for row in connection.execute(
+                    text("PRAGMA table_info(nas_servers)")
+                )
+            }
+            row = connection.execute(
+                text(
+                    """
+                    SELECT scan_transport, webdav_port,
+                           webdav_use_https
+                      FROM nas_servers
+                     WHERE id = 1
+                    """
+                )
+            ).one()
+
+        assert {
+            "scan_transport",
+            "webdav_port",
+            "webdav_use_https",
+        } <= columns
+        assert row[0] == "file_station"
+        assert row[1] is None
+        assert row[2] == 0
+    finally:
+        engine.dispose()
