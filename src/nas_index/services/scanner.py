@@ -35,6 +35,12 @@ class DirectoryFailure:
     error: Exception
 
 
+class ScanDirectoryTimeout(TimeoutError):
+    def __init__(self, path: str):
+        super().__init__(path)
+        self.path = path
+
+
 class Scanner:
     def __init__(
         self,
@@ -47,6 +53,9 @@ class Scanner:
         concurrency: int = 1,
         progress_interval_seconds: float = 0.0,
         skip_recycle: bool = False,
+        directory_timeout_seconds: float = 0.0,
+        flush_directories: int = 100,
+        flush_items: int = 2000,
     ):
         self.engine = engine
         self.nas_id = nas_id
@@ -59,6 +68,12 @@ class Scanner:
             progress_interval_seconds,
         )
         self.skip_recycle = skip_recycle
+        self.directory_timeout_seconds = max(
+            0.0,
+            directory_timeout_seconds,
+        )
+        self.flush_directories = max(1, flush_directories)
+        self.flush_items = max(1, flush_items)
 
     async def run(self) -> int:
         with Session(self.engine) as session:
@@ -145,7 +160,11 @@ class Scanner:
             reason = (
                 str(exc)
                 if isinstance(exc, QnapError)
-                else "扫描任务异常中断"
+                else (
+                    f"目录列举超时：{exc.path}"
+                    if isinstance(exc, ScanDirectoryTimeout)
+                    else f"扫描任务异常中断（{type(exc).__name__}）"
+                )
             )
             if isinstance(exc, QnapError):
                 LOGGER.warning(
@@ -222,7 +241,11 @@ class Scanner:
             DirectoryItems | DirectoryFailure
         ] = asyncio.Queue()
         pending_directories = 0
-        batch: list[IndexedItem] = []
+        buffer: list[DirectoryItems] = []
+        buffered_items = 0
+        written_processed = processed
+        pending_processed = processed
+        pending_path = current_path
 
         for path in initial_directories:
             path_queue.put_nowait(path)
@@ -243,62 +266,53 @@ class Scanner:
         try:
             while pending_directories:
                 result = await result_queue.get()
-                current_path = result.path
+                pending_path = result.path
                 pending_directories -= 1
                 if isinstance(result, DirectoryFailure):
                     raise result.error
 
-                self._replace_children(
-                    result.path,
-                    {
-                        item.full_path
-                        for item in result.items
-                    },
-                )
+                buffer.append(result)
+                buffered_items += len(result.items)
+                pending_processed += len(result.items)
+                for item in result.items:
+                    if item.entry_type == "directory":
+                        path_queue.put_nowait(
+                            item.full_path
+                        )
+                        pending_directories += 1
 
-                if result.items:
-                    batch.extend(result.items)
-                    processed += len(result.items)
-                    for item in result.items:
-                        if item.entry_type == "directory":
-                            path_queue.put_nowait(
-                                item.full_path
-                            )
-                            pending_directories += 1
-
-                if len(batch) >= self.batch_size:
-                    self._write_batch(
-                        batch,
-                        generation,
-                    )
-                    batch.clear()
-
-                if self._should_record_progress(
-                    next_progress_at,
+                if self._should_flush(
+                    buffer,
+                    buffered_items,
                     pending_directories,
+                    next_progress_at,
                 ):
-                    self._progress(
+                    await self._flush_results(
+                        buffer,
+                        generation,
                         run_id,
-                        processed,
-                        current_path,
+                        pending_processed,
+                        pending_path,
                     )
+                    written_processed = pending_processed
+                    buffer.clear()
+                    buffered_items = 0
                     next_progress_at = (
                         self._next_progress_deadline()
                     )
 
-            if batch:
-                self._write_batch(
-                    batch,
+            if buffer:
+                await self._flush_results(
+                    buffer,
                     generation,
+                    run_id,
+                    pending_processed,
+                    pending_path,
                 )
+                written_processed = pending_processed
 
-            self._progress(
-                run_id,
-                processed,
-                current_path,
-            )
             cancel_workers = False
-            return processed, current_path
+            return written_processed, pending_path
         finally:
             if cancel_workers:
                 for worker in workers:
@@ -310,6 +324,21 @@ class Scanner:
                 *workers,
                 return_exceptions=True,
             )
+
+    async def _list_directory(
+        self,
+        client: Any,
+        path: str,
+    ) -> list[IndexedItem]:
+        items: list[IndexedItem] = []
+        async for item in client.iter_children(
+            path,
+            page_size=self.page_size,
+        ):
+            if self._should_skip(item):
+                continue
+            items.append(item)
+        return items
 
     async def _directory_worker(
         self,
@@ -324,14 +353,26 @@ class Scanner:
             try:
                 if path is None:
                     return
-                items: list[IndexedItem] = []
-                async for item in client.iter_children(
-                    path,
-                    page_size=self.page_size,
-                ):
-                    if self._should_skip(item):
-                        continue
-                    items.append(item)
+                if self.directory_timeout_seconds > 0:
+                    try:
+                        items = await asyncio.wait_for(
+                            self._list_directory(
+                                client,
+                                path,
+                            ),
+                            timeout=(
+                                self.directory_timeout_seconds
+                            ),
+                        )
+                    except TimeoutError as exc:
+                        raise ScanDirectoryTimeout(
+                            path
+                        ) from exc
+                else:
+                    items = await self._list_directory(
+                        client,
+                        path,
+                    )
                 await result_queue.put(
                     DirectoryItems(path, items)
                 )
@@ -341,6 +382,84 @@ class Scanner:
                 )
             finally:
                 path_queue.task_done()
+
+    async def _flush_results(
+        self,
+        results: list[DirectoryItems],
+        generation: int,
+        run_id: int,
+        processed: int,
+        current_path: str,
+    ) -> None:
+        await asyncio.to_thread(
+            self._write_results,
+            results,
+            generation,
+            run_id,
+            processed,
+            current_path,
+        )
+
+    def _write_results(
+        self,
+        results: list[DirectoryItems],
+        generation: int,
+        run_id: int,
+        processed: int,
+        current_path: str,
+    ) -> None:
+        with Session(self.engine) as session:
+            repository = EntryRepository(session)
+            for result in results:
+                self._replace_children(
+                    repository,
+                    result.path,
+                    {
+                        item.full_path
+                        for item in result.items
+                    },
+                )
+            items = [
+                item
+                for result in results
+                for item in result.items
+            ]
+            chunk_size = max(1, self.batch_size)
+            for start in range(
+                0,
+                len(items),
+                chunk_size,
+            ):
+                repository.upsert_batch(
+                    self.nas_id,
+                    items[start : start + chunk_size],
+                    generation,
+                )
+            SyncRepository(session).progress(
+                run_id,
+                processed,
+                current_path,
+            )
+            session.commit()
+
+    def _should_flush(
+        self,
+        buffer: list[DirectoryItems],
+        buffered_items: int,
+        pending_directories: int,
+        next_progress_at: float,
+    ) -> bool:
+        if not buffer:
+            return False
+        if pending_directories == 0:
+            return True
+        if len(buffer) >= self.flush_directories:
+            return True
+        if buffered_items >= self.flush_items:
+            return True
+        if self.progress_interval_seconds <= 0:
+            return True
+        return monotonic() >= next_progress_at
 
     def _write_batch(
         self,
@@ -359,16 +478,15 @@ class Scanner:
 
     def _replace_children(
         self,
+        repository: EntryRepository,
         parent_path: str,
         observed_full_paths: set[str],
     ) -> None:
-        with Session(self.engine) as session:
-            EntryRepository(session).replace_children(
-                self.nas_id,
-                parent_path,
-                observed_full_paths,
-            )
-            session.commit()
+        repository.replace_children(
+            self.nas_id,
+            parent_path,
+            observed_full_paths,
+        )
 
     def _schedule_next_share_syncs(
         self,
@@ -448,15 +566,3 @@ class Scanner:
         if self.progress_interval_seconds <= 0:
             return 0.0
         return monotonic() + self.progress_interval_seconds
-
-    def _should_record_progress(
-        self,
-        next_progress_at: float,
-        pending_directories: int,
-    ) -> bool:
-        if self.progress_interval_seconds <= 0:
-            return True
-        return (
-            pending_directories == 0
-            or monotonic() >= next_progress_at
-        )

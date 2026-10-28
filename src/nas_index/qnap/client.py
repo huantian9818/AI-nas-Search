@@ -265,17 +265,24 @@ class QnapClient:
         http: httpx.AsyncClient | None = None,
         timeout_seconds: float = 20.0,
         retry_attempts: int = 3,
+        max_connections: int | None = None,
     ):
         self.connection = connection
-        self.http = http or httpx.AsyncClient(
-            timeout=timeout_seconds,
-            trust_env=False,
-            verify=(
+        client_kwargs: dict[str, object] = {
+            "timeout": timeout_seconds,
+            "trust_env": False,
+            "verify": (
                 False
                 if self.connection.skip_tls_verify
                 else True
             ),
-        )
+        }
+        if max_connections is not None:
+            client_kwargs["limits"] = httpx.Limits(
+                max_connections=max_connections,
+                max_keepalive_connections=max_connections,
+            )
+        self.http = http or httpx.AsyncClient(**client_kwargs)
         self._owns_http = http is None
         self.retry_attempts = max(1, min(retry_attempts, 3))
         self.sid: str | None = None
@@ -622,7 +629,7 @@ class QnapClient:
         url: str,
         params: dict[str, object],
     ) -> httpx.Response:
-        delays = (0.0, 0.25, 0.75)[: self.retry_attempts]
+        delays = (0.0, 0.5, 1.5)[: self.retry_attempts]
         for attempt, delay in enumerate(delays, start=1):
             if delay:
                 await asyncio.sleep(delay)
@@ -652,6 +659,13 @@ class QnapClient:
                     raise QnapConnectionError() from exc
             except httpx.HTTPStatusError as exc:
                 raise QnapConnectionError() from exc
+            except httpx.TransportError as exc:
+                # RemoteProtocolError/ReadError are common when the QNAP
+                # appliance drops a keep-alive connection mid-response.
+                # Retrying one request is far cheaper than aborting the
+                # whole directory scan.
+                if attempt == len(delays):
+                    raise QnapConnectionError() from exc
         raise QnapConnectionError()
 
     async def logout(self) -> None:

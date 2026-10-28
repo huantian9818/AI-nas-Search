@@ -47,6 +47,9 @@ FTS_DDL = (
 
 
 BEIJING_TIME_MIGRATION_KEY = "beijing_time_migration_applied"
+ENTRY_SCOPE_BACKFILL_KEY = "entry_scope_backfill_applied"
+FTS_SCHEMA_VERSION_KEY = "fts_schema_version"
+FTS_SCHEMA_VERSION = "1"
 
 
 DATETIME_COLUMNS = {
@@ -82,6 +85,13 @@ def create_database_engine(database_url: str) -> Engine:
         cursor.execute("PRAGMA journal_mode=WAL")
         cursor.execute("PRAGMA busy_timeout=5000")
         cursor.execute("PRAGMA foreign_keys=ON")
+        # The index is rebuildable, so WAL + NORMAL is the right durability
+        # trade-off: an application crash cannot corrupt it, and commit
+        # latency drops sharply for the many small scan transactions.
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        cursor.execute("PRAGMA cache_size=-8192")
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        cursor.execute("PRAGMA wal_autocheckpoint=2000")
         cursor.close()
 
     return engine
@@ -96,9 +106,80 @@ def init_database(engine: Engine) -> None:
     Base.metadata.create_all(engine)
     _migrate_legacy_schema(engine)
     _migrate_utc_times_to_beijing(engine)
+    _ensure_fts_index(engine)
+
+
+def _ensure_app_metadata(connection) -> None:
+    connection.exec_driver_sql(
+        """
+        CREATE TABLE IF NOT EXISTS app_metadata (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        )
+        """
+    )
+
+
+def _migration_value(connection, key: str) -> str | None:
+    return connection.execute(
+        text(
+            """
+            SELECT value
+            FROM app_metadata
+            WHERE key = :key
+            """
+        ),
+        {"key": key},
+    ).scalar()
+
+
+def _mark_migration(
+    connection,
+    key: str,
+    value: str = "1",
+) -> None:
+    connection.execute(
+        text(
+            """
+            INSERT OR REPLACE INTO app_metadata (key, value)
+            VALUES (:key, :value)
+            """
+        ),
+        {"key": key, "value": value},
+    )
+
+
+def _ensure_fts_index(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
     with engine.begin() as connection:
-        for statement in FTS_DDL:
-            connection.exec_driver_sql(statement)
+        _ensure_app_metadata(connection)
+        table_exists = connection.execute(
+            text(
+                """
+                SELECT 1
+                FROM sqlite_master
+                WHERE type = 'table' AND name = 'entry_search'
+                """
+            )
+        ).scalar()
+        version = _migration_value(
+            connection,
+            FTS_SCHEMA_VERSION_KEY,
+        )
+        if table_exists and version == FTS_SCHEMA_VERSION:
+            return
+        _rebuild_fts_index(connection)
+        _mark_migration(
+            connection,
+            FTS_SCHEMA_VERSION_KEY,
+            FTS_SCHEMA_VERSION,
+        )
+
+
+def _rebuild_fts_index(connection) -> None:
+    for statement in FTS_DDL:
+        connection.exec_driver_sql(statement)
 
 
 def _migrate_legacy_schema(engine: Engine) -> None:
@@ -121,25 +202,11 @@ def _migrate_utc_times_to_beijing(engine: Engine) -> None:
     if engine.dialect.name != "sqlite":
         return
     with engine.begin() as connection:
-        connection.exec_driver_sql(
-            """
-            CREATE TABLE IF NOT EXISTS app_metadata (
-                key TEXT PRIMARY KEY,
-                value TEXT NOT NULL
-            )
-            """
-        )
-        marker = connection.execute(
-            text(
-                """
-                SELECT value
-                FROM app_metadata
-                WHERE key = :key
-                """
-            ),
-            {"key": BEIJING_TIME_MIGRATION_KEY},
-        ).scalar()
-        if marker == "1":
+        _ensure_app_metadata(connection)
+        if _migration_value(
+            connection,
+            BEIJING_TIME_MIGRATION_KEY,
+        ) == "1":
             return
 
         table_names = {
@@ -174,14 +241,9 @@ def _migrate_utc_times_to_beijing(engine: Engine) -> None:
                     """
                 )
 
-        connection.execute(
-            text(
-                """
-                INSERT OR REPLACE INTO app_metadata (key, value)
-                VALUES (:key, '1')
-                """
-            ),
-            {"key": BEIJING_TIME_MIGRATION_KEY},
+        _mark_migration(
+            connection,
+            BEIJING_TIME_MIGRATION_KEY,
         )
 
 
@@ -392,6 +454,12 @@ def _migrate_single_nas_config(engine: Engine) -> None:
 
 def _backfill_entry_scope(engine: Engine) -> None:
     with engine.begin() as connection:
+        _ensure_app_metadata(connection)
+        if _migration_value(
+            connection,
+            ENTRY_SCOPE_BACKFILL_KEY,
+        ) == "1":
+            return
         rows = connection.execute(
             text(
                 """
@@ -417,6 +485,10 @@ def _backfill_entry_scope(engine: Engine) -> None:
                     "id": row["id"],
                 },
             )
+        _mark_migration(
+            connection,
+            ENTRY_SCOPE_BACKFILL_KEY,
+        )
 
 
 def _share_path_from_full_path(full_path: str) -> str:

@@ -7,6 +7,7 @@ import pytest
 from nas_index.qnap.client import QnapClient, build_batch_download_url
 from nas_index.qnap.errors import (
     QnapAuthenticationError,
+    QnapConnectionError,
     QnapPermissionError,
     QnapProtocolError,
 )
@@ -200,6 +201,67 @@ async def test_listing_retries_transient_connection_failure(monkeypatch):
         assert await client.list_shares() == []
 
     assert attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_listing_retries_protocol_disconnect(monkeypatch):
+    attempts = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal attempts
+        attempts += 1
+        if attempts < 3:
+            raise httpx.RemoteProtocolError(
+                "Server disconnected without sending a response.",
+                request=request,
+            )
+        return httpx.Response(200, json=[])
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(
+        "nas_index.qnap.client.asyncio.sleep",
+        no_sleep,
+    )
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = QnapClient(
+            CONNECTION,
+            http=http,
+            retry_attempts=3,
+        )
+        client.sid = "sid"
+        assert await client.list_shares() == []
+
+    assert attempts == 3
+
+
+@pytest.mark.asyncio
+async def test_listing_protocol_disconnect_exhausts_retries(monkeypatch):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.RemoteProtocolError(
+            "Server disconnected without sending a response.",
+            request=request,
+        )
+
+    async def no_sleep(_delay):
+        return None
+
+    monkeypatch.setattr(
+        "nas_index.qnap.client.asyncio.sleep",
+        no_sleep,
+    )
+    transport = httpx.MockTransport(handler)
+    async with httpx.AsyncClient(transport=transport) as http:
+        client = QnapClient(
+            CONNECTION,
+            http=http,
+            retry_attempts=3,
+        )
+        client.sid = "sid"
+        with pytest.raises(QnapConnectionError):
+            await client.list_shares()
 
 
 @pytest.mark.asyncio

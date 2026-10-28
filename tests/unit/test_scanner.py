@@ -379,6 +379,7 @@ async def test_failed_scan_keeps_latest_recorded_progress(database):
 
         def _replace_children(
             self,
+            repository,
             parent_path,
             observed_full_paths,
         ):
@@ -386,6 +387,7 @@ async def test_failed_scan_keeps_latest_recorded_progress(database):
             if self.replace_calls > 1:
                 raise RuntimeError("database write failed")
             super()._replace_children(
+                repository,
                 parent_path,
                 observed_full_paths,
             )
@@ -537,3 +539,95 @@ async def test_scan_fetches_directories_concurrently(database):
     ).run()
 
     assert qnap.max_in_flight >= 2
+
+
+@pytest.mark.asyncio
+async def test_directory_timeout_fails_with_clear_reason(database):
+    class SlowQnap(FakeQnap):
+        async def iter_children(self, path, *, page_size):
+            if path == "/Public":
+                await asyncio.sleep(5)
+            yield
+
+    with Session(database) as session:
+        nas_id = create_nas(session)
+
+    await Scanner(
+        database,
+        lambda: SlowQnap(),
+        page_size=100,
+        batch_size=10,
+        nas_id=nas_id,
+        directory_timeout_seconds=0.05,
+    ).run()
+
+    with Session(database) as session:
+        scan = session.scalar(
+            select(SyncRun).order_by(SyncRun.id.desc())
+        )
+
+    assert scan.status == "failed"
+    assert scan.error_summary == "目录列举超时：/Public"
+
+
+@pytest.mark.asyncio
+async def test_scan_flushes_directories_in_batches(database):
+    class WideQnap(FakeQnap):
+        async def iter_children(self, path, *, page_size):
+            if path == "/Public":
+                rows = [
+                    directory(
+                        f"d{index}",
+                        f"/Public/d{index}",
+                        "/Public",
+                    )
+                    for index in range(4)
+                ]
+            elif path.startswith("/Public/d"):
+                rows = [
+                    file(
+                        "f.txt",
+                        f"{path}/f.txt",
+                        path,
+                    )
+                ]
+            else:
+                rows = []
+            for row in rows:
+                yield row
+
+    flushes: list[int] = []
+
+    class CountingScanner(Scanner):
+        def _write_results(
+            self,
+            results,
+            generation,
+            run_id,
+            processed,
+            current_path,
+        ):
+            flushes.append(len(results))
+            super()._write_results(
+                results,
+                generation,
+                run_id,
+                processed,
+                current_path,
+            )
+
+    with Session(database) as session:
+        nas_id = create_nas(session)
+
+    await CountingScanner(
+        database,
+        lambda: WideQnap(),
+        page_size=100,
+        batch_size=100,
+        nas_id=nas_id,
+        progress_interval_seconds=60,
+        flush_directories=3,
+        flush_items=1000,
+    ).run()
+
+    assert flushes == [3, 2]

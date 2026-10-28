@@ -172,3 +172,60 @@ def test_init_database_migrates_existing_utc_times_to_beijing_once(tmp_path):
     assert state["last_synced_at"].startswith("2026-01-01 09:00:00")
     assert state["next_sync_at"].startswith("2026-01-01 12:00:00")
     assert marker == "1"
+
+
+def test_database_uses_normal_synchronous(tmp_path):
+    engine = create_database_engine(
+        f"sqlite:///{tmp_path / 'pragma.db'}"
+    )
+    init_database(engine)
+
+    with engine.connect() as connection:
+        value = connection.execute(
+            text("PRAGMA synchronous")
+        ).scalar_one()
+
+    assert value == 1
+
+
+def test_init_database_records_startup_migration_markers(tmp_path):
+    engine = create_database_engine(
+        f"sqlite:///{tmp_path / 'markers.db'}"
+    )
+    init_database(engine)
+
+    with engine.connect() as connection:
+        markers = dict(
+            connection.execute(
+                text("SELECT key, value FROM app_metadata")
+            ).all()
+        )
+
+    assert markers["beijing_time_migration_applied"] == "1"
+    assert markers["entry_scope_backfill_applied"] == "1"
+    assert markers["fts_schema_version"] == "1"
+
+
+def test_fts_index_is_rebuilt_only_when_missing(
+    tmp_path,
+    monkeypatch,
+):
+    engine = create_database_engine(
+        f"sqlite:///{tmp_path / 'fts.db'}"
+    )
+    init_database(engine)
+
+    rebuilds: list[int] = []
+    monkeypatch.setattr(
+        "nas_index.db._rebuild_fts_index",
+        lambda _connection: rebuilds.append(1),
+    )
+
+    init_database(engine)
+    assert rebuilds == []
+
+    with engine.begin() as connection:
+        connection.exec_driver_sql("DROP TABLE entry_search")
+
+    init_database(engine)
+    assert rebuilds == [1]

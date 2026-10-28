@@ -122,6 +122,10 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 retry_attempts=(
                     settings.qnap_retry_attempts
                 ),
+                max_connections=max(
+                    4,
+                    settings.scan_concurrency * 2,
+                ),
             ),
             page_size=settings.scan_page_size,
             batch_size=settings.scan_batch_size,
@@ -130,6 +134,15 @@ def create_app(settings: AppSettings | None = None) -> FastAPI:
                 settings.scan_progress_interval_seconds
             ),
             skip_recycle=settings.scan_skip_recycle,
+            # A single directory that never answers used to pin the
+            # whole NAS sync forever. Bound every listing so the run
+            # fails fast and the scheduler can retry it.
+            directory_timeout_seconds=max(
+                60.0,
+                settings.qnap_timeout_seconds
+                * (min(settings.qnap_retry_attempts, 3) + 1)
+                * 2,
+            ),
         )
 
     app.state.sync_manager = SyncManager(
