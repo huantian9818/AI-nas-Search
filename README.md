@@ -8,6 +8,7 @@ AI NAS Search 是一个面向 QNAP NAS 的本地文件名索引与检索工具�
 
 - 多 NAS 配置：管理员可以维护多个 QNAP NAS。
 - 定时同步：按 NAS 配置的间隔遍历共享文件夹，并更新有变化的文件名数据。
+- 可选 WebDAV 扫描：目录遍历可以切换到 WebDAV（需在 NAS 上启用），登录、权限校验和下载仍走 File Station；实测全量扫描比 File Station 快 2.5–4 倍。
 - 本地数据库搜索：搜索直接查本机 SQLite，避免每次搜索都扫 NAS。
 - 权限过滤：普通用户用自己的 NAS 账号登录，只能看到有权限的共享文件夹。
 - 统一登录入口：未登录时打开概览、目录或搜索，都会显示 NAS 账号登录窗口；登录成功后返回原页面。
@@ -135,6 +136,17 @@ uv run uvicorn nas_index.web.app:app --host 127.0.0.1 --port 8001
 9. 如需在概览页手动触发同步，管理员还需使用 NAS 用户账号完成普通用户登录；管理员身份与 NAS 用户权限相互独立。
 
 索引账号建议使用专门创建的只读账号，并授权所有需要被索引的共享文件夹。该账号密码会保存在本机 SQLite 数据库中，请只在可信设备上运行本程序。
+
+### WebDAV 加速扫描（可选）
+
+如果 NAS 已经启用 WebDAV（QNAP 控制台 → WebDAV），可以在 `/settings` 的 NAS 编辑区把「扫描方式」切换为 WebDAV，并填写 WebDAV 端口和是否使用 HTTPS。
+
+- 登录、共享目录权限校验、下载仍然走 File Station，权限模型不变；
+- 只有目录遍历改走 WebDAV，每次 `PROPFIND Depth: 1` 列一个目录；
+- QNAP 的 Apache 默认不允许 `Depth: infinity`，所以仍然是每个目录一次请求；
+- 实测全量扫描：NAS 1 从 36 分钟降到 14 分钟，NAS 2 从 25 分钟降到 6 分钟；
+- WebDAV 不可用时该轮扫描会失败并记录错误，可以随时在设置页切回 File Station；
+- 新建 NAS 时默认仍使用 File Station，不影响已有部署。
 
 ## 普通用户使用
 
